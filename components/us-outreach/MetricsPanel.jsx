@@ -6,12 +6,11 @@ import { Panel } from '@/components/multiply/ui';
  * MetricsPanel — aggregate stats across all calls. Computed from the already-
  * loaded calls array so no extra DB round-trip.
  */
-export function MetricsPanel({ calls, messageCounts = {}, commission }) {
-  const m = useMemo(() => computeMetrics(calls, messageCounts, commission), [
-    calls,
-    messageCounts,
-    commission,
-  ]);
+export function MetricsPanel({ calls, messageCounts = {}, commission, dbTotals = null }) {
+  const m = useMemo(
+    () => computeMetrics(calls, messageCounts, commission, dbTotals),
+    [calls, messageCounts, commission, dbTotals],
+  );
 
   return (
     <Panel title="Analytics" subtitle="across all calls">
@@ -152,11 +151,21 @@ const OUTCOME_META = {
   'no-disposition': { label: 'No disposition', color: 'neutral', emoji: '—' },
 };
 
-function computeMetrics(calls, messageCounts, commission) {
-  const placed = calls.length;
-  const connected = calls.filter(
-    (c) => c.status === 'live' || c.status === 'completed',
-  ).length;
+function computeMetrics(calls, messageCounts, commission, dbTotals) {
+  // Use the authoritative DB total when available (poll-based, never stale).
+  // Fall back to the loaded-array count otherwise.
+  const placed = dbTotals?.calls ?? calls.length;
+
+  // "Connected" = someone actually engaged. Best signal: we have messages for
+  // the call (real conversation happened) OR disposition was recorded.
+  const connected = calls.filter((c) => {
+    const msgs = messageCounts[c.id] ?? 0;
+    if (c.disposition) return true;
+    if (msgs > 2) return true;
+    if (c.connected_at) return true;
+    return false;
+  }).length;
+
   const closed = calls.filter((c) => c.disposition === 'closed').length;
   const failed = calls.filter((c) => c.status === 'failed').length;
 
@@ -169,7 +178,7 @@ function computeMetrics(calls, messageCounts, commission) {
     : 0;
   const maxTalkSec = talkDurations.length ? Math.max(...talkDurations) : 0;
 
-  const totalMessages = Object.values(messageCounts).reduce((a, b) => a + b, 0);
+  const totalMessages = dbTotals?.messages ?? Object.values(messageCounts).reduce((a, b) => a + b, 0);
   const avgMessages = placed > 0 ? totalMessages / placed : null;
 
   // Time from trigger to close for closed calls

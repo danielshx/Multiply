@@ -98,10 +98,14 @@ export async function POST(req: Request) {
 
   // Need at least one identifier to find the row.
   if (!placeId && !placeName && !website) {
+    const debug_repr = typeof body.debug_repr === "string" ? body.debug_repr : null;
+    console.log("[enrich-callback] rejected - no identifiers", { debug_repr, body });
     return NextResponse.json({
       ok: false,
       reason: "need at least one of google_place_id, place_name, or website",
       received_keys: Object.keys(body),
+      debug_repr,
+      body_snapshot: body,
     });
   }
 

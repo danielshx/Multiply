@@ -167,9 +167,10 @@ export async function GET(
           }));
 
         if (newRows.length > 0) {
-          const { error: insErr } = await supabase
+          const { data: inserted, error: insErr } = await supabase
             .from("us_outreach_messages")
-            .insert(newRows);
+            .insert(newRows)
+            .select();
           if (insErr) {
             return NextResponse.json({
               ok: false,
@@ -177,10 +178,21 @@ export async function GET(
               synced_messages: 0,
               insert_error: insErr.message,
               attempted: newRows.length,
+              sample_row: newRows[0],
+            });
+          }
+          messageCount = inserted?.length ?? 0;
+          if (messageCount === 0 && newRows.length > 0) {
+            return NextResponse.json({
+              ok: true,
+              session_id: sessionId,
+              synced_messages: 0,
+              attempted: newRows.length,
+              hint: "insert returned no rows — RLS silently filtered or constraint quiet-failed",
+              sample_row: newRows[0],
             });
           }
         }
-        messageCount = newRows.length;
       }
     } catch (err) {
       // Session may not be ready yet — that's fine, next poll will retry.

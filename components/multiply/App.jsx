@@ -9,6 +9,7 @@ import { AgentTrace } from './AgentTrace';
 import { KnowledgeGraph } from './KnowledgeGraph';
 import { LiveActivityIndicator } from './LiveActivity';
 import { Wordmark, Dot, Button, Kbd, IconSearch } from './ui';
+import { AgentDetail } from './AgentDetail';
 
 const STAGE = { INTRO: 'intro', ONBOARDING: 'onboarding', DEPLOYING: 'deploying', APP: 'app' };
 
@@ -17,6 +18,7 @@ export default function App() {
   const [stage, setStage] = useState(STAGE.INTRO);
   const [companyData, setCompanyData] = useState(null);
   const [view, setView] = useState('dashboard');
+  const [selectedAgent, setSelectedAgent] = useState(null);
   const [callOpen, setCallOpen] = useState(false);
   const [agentsPaused, setAgentsPaused] = useState(false);
   const [takeover, setTakeover] = useState(false);
@@ -107,7 +109,7 @@ export default function App() {
         companyData={companyData}
       />
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        <Sidebar view={view} setView={setView} agentsPaused={agentsPaused} resetDemo={resetDemo} />
+        <Sidebar view={view} setView={setView} agentsPaused={agentsPaused} resetDemo={resetDemo} selectedAgent={selectedAgent} setSelectedAgent={setSelectedAgent} />
         <main style={{ flex: 1, overflow: 'auto', padding: 20 }}>
           {view === 'dashboard' && (
             <Dashboard
@@ -121,6 +123,7 @@ export default function App() {
           )}
           {view === 'trace' && <AgentTrace />}
           {view === 'graph' && <KnowledgeGraph />}
+          {view === 'agent' && <AgentDetail agentName={selectedAgent} />}
         </main>
       </div>
 
@@ -223,7 +226,12 @@ function TabButton({ children, active, onClick }) {
   );
 }
 
-function Sidebar({ agentsPaused, resetDemo }) {
+function Sidebar({ agentsPaused, resetDemo, view, setView, selectedAgent, setSelectedAgent }) {
+  const onAgentClick = (label) => {
+    setSelectedAgent(label);
+    setView('agent');
+  };
+
   const items = [
     { section: 'Intake', rows: [
       { label: 'Live signals', count: 2847 },
@@ -237,13 +245,13 @@ function Sidebar({ agentsPaused, resetDemo }) {
       { label: 'Closed', count: 8 },
     ]},
     { section: 'Agents', rows: [
-      { label: 'Signal Hunter', status: agentsPaused ? 'paused' : 'live' },
-      { label: 'Prospector', status: agentsPaused ? 'paused' : 'live' },
-      { label: 'Researcher', status: agentsPaused ? 'paused' : 'live' },
-      { label: 'Personaliser', status: agentsPaused ? 'paused' : 'live' },
-      { label: 'Qualifier', status: agentsPaused ? 'paused' : 'live' },
-      { label: 'Negotiator', status: 'standby' },
-      { label: 'Closer', status: 'standby' },
+      { label: 'Signal Hunter', status: agentsPaused ? 'paused' : 'live', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Signal Hunter' },
+      { label: 'Prospector', status: agentsPaused ? 'paused' : 'live', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Prospector' },
+      { label: 'Researcher', status: agentsPaused ? 'paused' : 'live', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Researcher' },
+      { label: 'Personaliser', status: agentsPaused ? 'paused' : 'live', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Personaliser' },
+      { label: 'Qualifier', status: agentsPaused ? 'paused' : 'live', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Qualifier' },
+      { label: 'Negotiator', status: 'standby', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Negotiator' },
+      { label: 'Closer', status: 'standby', onClick: onAgentClick, active: view === 'agent' && selectedAgent === 'Closer' },
     ]},
   ];
 
@@ -297,23 +305,24 @@ function Sidebar({ agentsPaused, resetDemo }) {
   );
 }
 
-function SidebarRow({ label, count, status }) {
+function SidebarRow({ label, count, status, onClick, active }) {
   const [hover, setHover] = React.useState(false);
   const statusColor = { live: 'success', standby: 'dim', paused: 'warning' }[status];
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={() => onClick?.(label)}
       style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '6px 10px',
         borderRadius: 'var(--radius-sm)',
-        background: hover ? 'var(--bg-subtle)' : 'transparent',
-        cursor: 'pointer',
+        background: active ? 'var(--accent-soft)' : hover ? 'var(--bg-subtle)' : 'transparent',
+        cursor: onClick ? 'pointer' : 'default',
         fontSize: 13,
-        color: 'var(--text-secondary)',
+        color: active ? 'var(--accent-text)' : 'var(--text-secondary)',
         transition: 'all 120ms ease',
       }}
     >

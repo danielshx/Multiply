@@ -6,7 +6,7 @@ Built for the **HappyRobot × TUM.ai** challenge as **Idea 1**. Hero demo = "Liv
 
 ## Where things live
 
-| What | Where |‚‚
+| What | Where |‚‚,
 |---|---|
 | **Planning, demo script, scoring, ideas, HR docs mirror** | `../HappyRobot-TumAI/` (the brain repo) |
 | **Product code (this repo)** | here |

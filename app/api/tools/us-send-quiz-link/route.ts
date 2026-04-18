@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { sendSms } from "@/lib/twilio/client";
 import { AFFILIATE, buildTrackedQuizUrl } from "@/lib/us-outreach/affiliate";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.call_id);
+    log.info("tool:send_quiz_link", "staged_manual", { to, link: url }, body.call_id);
     return NextResponse.json({
       ok: true,
       mode: "manual",

@@ -1,26 +1,31 @@
 /**
- * Paid Online Writing Jobs — ClickBank affiliate constants for /us-outreach.
- * Hop-ID can be overridden via AFFILIATE_HOP_ID env var.
+ * MindLens AI Personality Insight — universal 60-second quiz offer.
+ * Uses 16personalities free test as the destination URL. No affiliate
+ * tracking required; we carry cid=call_id purely for our own analytics.
  */
-const HOP_ID =
-  process.env.AFFILIATE_HOP_ID ?? "991c2879-98a8-47f9-befe-6eedacf996f2";
+const QUIZ_URL =
+  process.env.QUIZ_URL ?? "https://www.16personalities.com/free-personality-test";
 
 export const AFFILIATE = {
-  productName: "Paid Online Writing Jobs",
-  productUrl: "https://paidonlinewritingjobs.com/funnel/job-quiz/job-quiz/",
-  hopId: HOP_ID,
-  hopParam: "happyrob",
-  defaultCommissionUsd: 25,
+  productName: "MindLens AI Personality Insight",
+  brandName: "MindLens",
+  productUrl: QUIZ_URL,
+  hopId: "mindlens",
+  hopParam: "cid",
+  defaultCommissionUsd: 0,
 } as const;
 
 /**
- * Build a tracked quiz URL with the call_id as the ClickBank `cid` parameter
- * so conversions can be attributed back to the call that drove them.
+ * Build a URL for the destination quiz, tagged with call_id so we can trace
+ * which call drove a given click in our own Supabase logs.
  */
 export function buildTrackedQuizUrl(callId: string): string {
-  const u = new URL(AFFILIATE.productUrl);
-  u.searchParams.set("hopId", AFFILIATE.hopId);
-  u.searchParams.set("hop", AFFILIATE.hopParam);
-  u.searchParams.set("cid", callId);
-  return u.toString();
+  try {
+    const u = new URL(AFFILIATE.productUrl);
+    u.searchParams.set("ref", "mindlens");
+    u.searchParams.set("cid", callId);
+    return u.toString();
+  } catch {
+    return AFFILIATE.productUrl;
+  }
 }

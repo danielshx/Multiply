@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { AFFILIATE, buildTrackedQuizUrl } from "@/lib/us-outreach/affiliate";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,59 @@ function normalizePhone(raw: string): string {
   if (trimmed.startsWith("+")) return trimmed;
   if (trimmed.startsWith("00")) return `+${trimmed.slice(2)}`;
   return `+${trimmed}`;
+}
+
+/**
+ * Map the phone's country prefix to a language code + opener. German-speaking
+ * regions (Germany, Austria, Switzerland) get German; everything else English.
+ */
+// HR-provisioned caller-ID numbers (visible via GET
+// /events/{voice-agent-id}/config-schema).
+const FROM_NUMBER_DE = "PNb56badda3e5eefb6374a3ab139ebd34d"; // +498962824034 "TUM.AI Multiply"
+const FROM_NUMBER_US = "PNffadc515b9ba44a65a86c5f94b7ec94a"; // +18142643480 "TUM.AI Multiply US"
+const FROM_NUMBER_DE_DISPLAY = "+498962824034";
+const FROM_NUMBER_US_DISPLAY = "+18142643480";
+
+function languageFor(phone: string, name: string) {
+  const n = name?.trim() || "";
+  const firstName = n || "there";
+  if (/^\+49/.test(phone) || /^\+43/.test(phone) || /^\+41/.test(phone)) {
+    return {
+      language: "de",
+      language_name: "Deutsch",
+      greeting_word: "Hallo",
+      initial_line: `Hallo ${firstName}, hier ist Alex von MindLens — hast du kurz eine Sekunde?`,
+      from_number_id: FROM_NUMBER_DE,
+      from_number_display: FROM_NUMBER_DE_DISPLAY,
+    };
+  }
+  return {
+    language: "en",
+    language_name: "English",
+    greeting_word: "Hey",
+    initial_line: `Hey ${firstName}, this is Alex from MindLens — got a quick second?`,
+    from_number_id: FROM_NUMBER_US,
+    from_number_display: FROM_NUMBER_US_DISPLAY,
+  };
+}
+
+function countryCodeFor(phone: string): string {
+  const m = phone.match(/^\+(\d{1,3})/);
+  if (!m) return "unknown";
+  const cc = m[1];
+  const map: Record<string, string> = {
+    "1": "US",
+    "49": "DE",
+    "43": "AT",
+    "41": "CH",
+    "44": "GB",
+    "33": "FR",
+    "39": "IT",
+    "34": "ES",
+    "31": "NL",
+    "32": "BE",
+  };
+  return map[cc] ?? `+${cc}`;
 }
 
 export async function POST(req: Request) {
@@ -55,17 +109,25 @@ export async function POST(req: Request) {
 
   const supabase = getServerSupabase();
 
+  const langPreview = languageFor(phone, contactName);
+  const countryCode = countryCodeFor(phone);
+  const startedAt = new Date().toISOString();
+
   const { data: row, error: insertErr } = await supabase
     .from("us_outreach_calls")
     .insert({
       contact_name: contactName,
       phone_number: phone,
       status: "triggered",
+      language: langPreview.language,
+      country_code: countryCode,
+      started_at: startedAt,
     })
     .select()
     .single();
 
   if (insertErr || !row) {
+    log.error("trigger", "insert_failed", { phone, error: insertErr?.message });
     return NextResponse.json(
       { ok: false, error: insertErr?.message ?? "insert failed" },
       { status: 500 },
@@ -74,6 +136,8 @@ export async function POST(req: Request) {
 
   const callId = row.id as string;
   const trackedUrl = buildTrackedQuizUrl(callId);
+  const lang = langPreview;
+  log.info("trigger", "call_row_created", { phone, country: countryCode, language: lang.language }, callId);
 
   const payload = {
     call_id: callId,
@@ -83,6 +147,11 @@ export async function POST(req: Request) {
     product_url: AFFILIATE.productUrl,
     quiz_hop_id: AFFILIATE.hopId,
     tracked_quiz_url: trackedUrl,
+    language: lang.language,
+    language_name: lang.language_name,
+    initial_line: lang.initial_line,
+    from_number_id: lang.from_number_id,
+    from_number_display: lang.from_number_display,
   };
 
   try {
@@ -104,6 +173,7 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", callId);
+      log.error("trigger", "hr_trigger_failed", { status: res.status, body: text.slice(0, 500) }, callId);
       return NextResponse.json(
         { ok: false, status: res.status, error: text.slice(0, 300) },
         { status: 502 },
@@ -119,6 +189,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", callId);
+    log.info("trigger", "hr_triggered", { hr_run_id: runId }, callId);
 
     // Fire-and-forget: kick the sync endpoint a few times so session_id + early
     // messages get pulled even if the dashboard tab isn't open. Each attempt

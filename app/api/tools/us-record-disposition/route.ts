@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -62,5 +63,11 @@ export async function POST(req: Request) {
     );
   }
 
+  log.info(
+    "tool:record_disposition",
+    decision,
+    { reason: body.reason ?? null },
+    body.call_id,
+  );
   return NextResponse.json({ ok: true, recorded: decision });
 }

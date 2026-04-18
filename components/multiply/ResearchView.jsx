@@ -46,6 +46,21 @@ export function ResearchView({ showToast }) {
           });
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'googlemaps_candidates' },
+        (payload) => {
+          const row = payload.new;
+          if (!row?.id) return;
+          setRows((prev) => {
+            const idx = prev.findIndex((r) => r.id === row.id);
+            if (idx === -1) return prev;
+            const copy = prev.slice();
+            copy[idx] = { ...copy[idx], ...row };
+            return copy;
+          });
+        },
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') setConnected(true);
       });
@@ -316,30 +331,44 @@ function ResultsTable({ group, loading }) {
             <tr style={{ background: 'var(--bg-subtle)' }}>
               <Th style={{ width: 44 }}>#</Th>
               <Th>Name</Th>
-              <Th>Phone</Th>
+              <Th>Main phone</Th>
               <Th>Address</Th>
               <Th>Description</Th>
+              <Th>Contacts</Th>
               <Th style={{ width: 80, textAlign: 'right' }}>Rating</Th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><Td colSpan={6}><Placeholder>Loading…</Placeholder></Td></tr>
+              <tr><Td colSpan={7}><Placeholder>Loading…</Placeholder></Td></tr>
             )}
             {!loading && !group && (
-              <tr><Td colSpan={6}><Placeholder>Dispatch a run to see results stream in.</Placeholder></Td></tr>
+              <tr><Td colSpan={7}><Placeholder>Dispatch a run to see results stream in.</Placeholder></Td></tr>
             )}
             {!loading && group && group.items.length === 0 && (
-              <tr><Td colSpan={6}><Placeholder>No places in this run.</Placeholder></Td></tr>
+              <tr><Td colSpan={7}><Placeholder>No places in this run.</Placeholder></Td></tr>
             )}
             {group?.items.map((r, i) => (
               <tr key={r.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <Td style={{ color: 'var(--text-quaternary)', fontFamily: 'var(--mono)' }}>{i + 1}</Td>
                 <Td>
                   <div style={{ fontWeight: 500, color: 'var(--text)' }}>{r.place_name || '—'}</div>
-                  {r.company_type && (
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{r.company_type}</div>
-                  )}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3, alignItems: 'center' }}>
+                    {r.company_type && (
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{r.company_type}</span>
+                    )}
+                    <EnrichmentBadge status={r.enrichment_status} />
+                    {r.website && (
+                      <a
+                        href={/^https?:\/\//i.test(r.website) ? r.website : `https://${r.website}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 11, color: 'var(--accent-text)', fontFamily: 'var(--mono)' }}
+                      >
+                        site ↗
+                      </a>
+                    )}
+                  </div>
                 </Td>
                 <Td style={{ fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
                   {r.phone_number ? (
@@ -347,10 +376,11 @@ function ResultsTable({ group, loading }) {
                   ) : <span style={{ color: 'var(--text-quaternary)' }}>—</span>}
                 </Td>
                 <Td style={{ color: 'var(--text-secondary)' }}>{r.address || '—'}</Td>
-                <Td style={{ color: 'var(--text-secondary)', maxWidth: 420 }}>
-                  <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {r.description || '—'}
-                  </span>
+                <Td style={{ color: 'var(--text-secondary)', maxWidth: 380 }}>
+                  <DescriptionCell row={r} />
+                </Td>
+                <Td style={{ maxWidth: 320 }}>
+                  <ContactsCell row={r} />
                 </Td>
                 <Td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>
                   {r.rating != null ? (
@@ -370,6 +400,98 @@ function ResultsTable({ group, loading }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function DescriptionCell({ row }) {
+  const summary = row.website_summary?.trim();
+  if (summary) {
+    return (
+      <div>
+        <span style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {summary}
+        </span>
+        {row.description && row.description !== summary && (
+          <div style={{ fontSize: 11, color: 'var(--text-quaternary)', marginTop: 4, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            maps: {row.description}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (row.description) {
+    return (
+      <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {row.description}
+      </span>
+    );
+  }
+  return <span style={{ color: 'var(--text-quaternary)' }}>—</span>;
+}
+
+function ContactsCell({ row }) {
+  const contacts = Array.isArray(row.contacts) ? row.contacts : [];
+  const status = row.enrichment_status;
+  if (contacts.length === 0) {
+    if (status === 'enriching' || status === 'pending') {
+      return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>scraping…</span>;
+    }
+    if (status === 'skipped') {
+      return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>no website</span>;
+    }
+    if (status === 'failed') {
+      return (
+        <span style={{ color: 'var(--warning)', fontSize: 11 }} title={row.enrichment_error || ''}>
+          extract failed
+        </span>
+      );
+    }
+    return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>—</span>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {contacts.slice(0, 4).map((c, j) => (
+        <div key={j} style={{ lineHeight: 1.3 }}>
+          <div style={{ fontSize: 12, color: 'var(--text)' }}>
+            <span style={{ fontWeight: 500 }}>{c.name}</span>
+            {c.role && (
+              <span style={{ color: 'var(--text-tertiary)' }}> · {c.role}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-secondary)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {c.phone && (
+              <a href={`tel:${c.phone}`} style={{ color: 'var(--accent-text)' }}>{c.phone}</a>
+            )}
+            {c.email && (
+              <a href={`mailto:${c.email}`} style={{ color: 'var(--accent-text)' }}>{c.email}</a>
+            )}
+          </div>
+        </div>
+      ))}
+      {contacts.length > 4 && (
+        <div style={{ fontSize: 11, color: 'var(--text-quaternary)' }}>
+          +{contacts.length - 4} more
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EnrichmentBadge({ status }) {
+  const map = {
+    pending:    { label: 'queued',    color: 'neutral' },
+    enriching:  { label: 'scraping…', color: 'info' },
+    enriched:   { label: 'enriched',  color: 'success' },
+    skipped:    { label: 'no site',   color: 'neutral' },
+    failed:     { label: 'failed',    color: 'warning' },
+  };
+  const m = map[status];
+  if (!m) return null;
+  return (
+    <Pill color={m.color} size="xs">
+      {status === 'enriching' && <Dot color="info" pulse size={4} />}
+      {m.label}
+    </Pill>
   );
 }
 

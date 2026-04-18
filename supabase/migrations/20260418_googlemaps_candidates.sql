@@ -35,7 +35,14 @@ create table if not exists public.googlemaps_candidates (
   description     text,
   google_place_id text,
 
-  raw             jsonb not null default '{}'::jsonb
+  raw             jsonb not null default '{}'::jsonb,
+
+  -- website enrichment (fetched + extracted server-side after insert)
+  website_summary   text,
+  contacts          jsonb not null default '[]'::jsonb,
+  enrichment_status text not null default 'pending',  -- pending | enriching | enriched | skipped | failed
+  enrichment_error  text,
+  enriched_at       timestamptz
 );
 
 create index if not exists googlemaps_candidates_created_at_idx
@@ -46,6 +53,8 @@ create index if not exists googlemaps_candidates_topic_idx
   on public.googlemaps_candidates (topic);
 create index if not exists googlemaps_candidates_search_query_idx
   on public.googlemaps_candidates (search_query);
+create index if not exists googlemaps_candidates_enrichment_status_idx
+  on public.googlemaps_candidates (enrichment_status);
 
 do $$
 begin

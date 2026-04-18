@@ -88,6 +88,7 @@ function normalize(
   searchQuery: string | null,
   totalFound: number | null,
 ) {
+  const website = pickString(c, "website", "url");
   return {
     agent_name: agent || null,
     topic: topic || null,
@@ -97,12 +98,13 @@ function normalize(
     phone_number: pickString(c, "phone_number", "phone", "international_phone_number"),
     company_type: pickString(c, "company_type", "category", "type", "types"),
     address: pickString(c, "address", "formatted_address", "vicinity"),
-    website: pickString(c, "website", "url"),
+    website,
     rating: pickNumber(c, "rating"),
     review_count: pickInt(c, "review_count", "reviews_count", "user_ratings_total", "reviews"),
     hours: pickString(c, "hours", "opening_hours"),
     description: pickString(c, "description", "snippet", "about"),
     google_place_id: pickString(c, "google_place_id", "place_id", "google_maps_url"),
+    enrichment_status: website ? "pending" : "skipped",
     raw: c && typeof c === "object" ? c : { value: c },
   };
 }
@@ -171,7 +173,10 @@ export async function POST(req: Request) {
 
   const rows = candidates.map((c) => normalize(c, topic, agent, searchQuery, totalFound));
 
-  const { error } = await supabase.from("googlemaps_candidates").insert(rows);
+  const { data: inserted, error } = await supabase
+    .from("googlemaps_candidates")
+    .insert(rows)
+    .select("id, website");
 
   if (error) {
     console.error("googlemaps_candidates insert failed", error);
@@ -183,6 +188,10 @@ export async function POST(req: Request) {
       code: error.code ?? null,
     });
   }
+
+  // Enrichment is handled inside the HR workflow v8 (loop -> fetch website ->
+  // AI Extract -> POST /api/research/agent/enrich-callback per place).
+  void inserted;
 
   return NextResponse.json({ ok: true, inserted: rows.length });
 }

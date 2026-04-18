@@ -12,13 +12,18 @@ import { Wordmark, Dot, Button, Kbd, IconSearch } from './ui';
 import { AgentDetail } from './AgentDetail';
 import { PipelineView } from './PipelineView';
 import { PipelineAgentView } from './PipelineAgentView';
+import { SystemStatusBar } from './SystemStatusBar';
+import { RevenueTicker } from './RevenueTicker';
+import { CommandPalette } from './CommandPalette';
 
 const STAGE = { INTRO: 'intro', ONBOARDING: 'onboarding', DEPLOYING: 'deploying', APP: 'app' };
 
+const DEFAULT_COMPANY = { website: 'multiply.ai', product: 'B2B SaaS · Developer tools', teamSize: '6–20' };
+
 export default function App() {
   const [hydrated, setHydrated] = useState(false);
-  const [stage, setStage] = useState(STAGE.INTRO);
-  const [companyData, setCompanyData] = useState(null);
+  const [stage, setStage] = useState(STAGE.APP);
+  const [companyData, setCompanyData] = useState(DEFAULT_COMPANY);
   const [view, setView] = useState('dashboard');
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [callOpen, setCallOpen] = useState(false);
@@ -31,10 +36,15 @@ export default function App() {
   useEffect(() => {
     setHydrated(true);
     try {
-      const saved = localStorage.getItem('multiply_stage');
-      if (saved === STAGE.APP) setStage(STAGE.APP);
+      const tourWanted = typeof window !== 'undefined' && window.location.search.includes('tour=1');
+      const hasSeenTour = typeof window !== 'undefined' && localStorage.getItem('multiply_stage') === STAGE.APP;
+      if (tourWanted || (!hasSeenTour && typeof window !== 'undefined' && window.location.search.includes('intro=1'))) {
+        setStage(STAGE.INTRO);
+      }
       const company = JSON.parse(localStorage.getItem('multiply_company') || 'null');
-      if (company) setCompanyData(company);
+      if (company) setCompanyData({ ...DEFAULT_COMPANY, ...company });
+      // mark tour as seen so subsequent visits go straight to dashboard
+      localStorage.setItem('multiply_stage', STAGE.APP);
     } catch {}
   }, []);
 
@@ -91,8 +101,10 @@ export default function App() {
       localStorage.removeItem('multiply_company');
     } catch {}
     setStage(STAGE.INTRO);
-    setCompanyData(null);
+    setCompanyData(DEFAULT_COMPANY);
   };
+
+  const replayTour = () => setStage(STAGE.INTRO);
 
   if (!hydrated) return <div style={{ height: '100vh', background: 'var(--bg)' }} />;
   if (stage === STAGE.INTRO) return <Intro onStart={handleIntroComplete} />;
@@ -131,6 +143,8 @@ export default function App() {
         </main>
       </div>
 
+      <SystemStatusBar />
+
       {callOpen && (
         <LiveCall
           onClose={() => { setCallOpen(false); setTakeover(false); }}
@@ -140,6 +154,35 @@ export default function App() {
           showToast={showToast}
         />
       )}
+
+      <CommandPalette
+        onAction={(id) => {
+          switch (id) {
+            case 'open-call':     return setCallOpen(true);
+            case 'view-graph':    return setView('graph');
+            case 'view-trace':    return setView('trace');
+            case 'view-dashboard':return setView('dashboard');
+            case 'replay-tour':   return replayTour();
+            case 'seed-cognee':
+              fetch('/api/cognee/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+                .then(() => showToast('Cognee seed started · graph rebuilding', 'info'));
+              return;
+            case 'trigger-call':  return setCallOpen(true);
+            case 'book-meeting':
+              fetch('/api/tools/book-meeting', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ company: 'Command Palette Demo', attendee_email: 'demo@multiply.ai', proposed_slots: [new Date(Date.now() + 86400000).toISOString()] }) })
+                .then(() => showToast('Meeting booked via command palette', 'success'));
+              return;
+            case 'test-slack':
+              showToast('Slack test fires on next booking — setup SLACK_WEBHOOK_URL to enable', 'info');
+              return;
+            case 'open-readme':
+              window.open('https://github.com/danielshamsi/Multiply', '_blank');
+              return;
+            default: return;
+          }
+        }}
+      />
 
       {toast && <Toast key={toast.id} text={toast.text} kind={toast.kind} />}
     </div>
@@ -175,17 +218,21 @@ function TopBar({ view, setView, agentsPaused, onTogglePause, signalCount, compa
 
       <div style={{ flex: 1 }} />
 
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '5px 10px',
-        background: 'var(--bg-subtle)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        fontSize: 12, color: 'var(--text-tertiary)',
-        cursor: 'pointer',
-        transition: 'all 120ms ease',
-        width: 200,
-      }}
+      <RevenueTicker />
+
+      <button
+        onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 10px',
+          background: 'var(--bg-subtle)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 12, color: 'var(--text-tertiary)',
+          cursor: 'pointer',
+          transition: 'all 120ms ease',
+          width: 200,
+        }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-strong)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
       >
@@ -193,7 +240,7 @@ function TopBar({ view, setView, agentsPaused, onTogglePause, signalCount, compa
         <span>Search or jump to…</span>
         <span style={{ flex: 1 }} />
         <Kbd>⌘K</Kbd>
-      </div>
+      </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <LiveActivityIndicator />

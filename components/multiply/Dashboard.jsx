@@ -88,46 +88,83 @@ function Header({ companyData }) {
 
 function HeroStrip({ openCall }) {
   return (
-    <Card padding={0} style={{ overflow: 'hidden', position: 'relative' }}>
+    <Card padding={0} style={{ overflow: 'hidden', position: 'relative', borderColor: 'var(--accent-border)', boxShadow: '0 0 0 0 rgba(79,70,229,0.25), var(--shadow-md)', animation: 'heroGlow 2.4s ease-in-out infinite' }}>
+      <style>{`
+        @keyframes heroGlow {
+          0%,100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.0), var(--shadow-md); }
+          50%     { box-shadow: 0 0 0 4px rgba(79,70,229,0.18), var(--shadow-md); }
+        }
+        @keyframes waveBars {
+          0%,100% { transform: scaleY(0.35); }
+          50%     { transform: scaleY(1); }
+        }
+      `}</style>
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'linear-gradient(90deg, transparent 0%, var(--accent-soft) 100%)',
-        opacity: 0.5,
+        background: 'radial-gradient(1000px 200px at 80% 50%, rgba(79,70,229,0.22) 0%, transparent 60%), linear-gradient(90deg, transparent 0%, var(--accent-soft) 100%)',
+        opacity: 0.9,
         pointerEvents: 'none',
       }} />
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', gap: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 26px', gap: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, flex: 1, minWidth: 0 }}>
           <div style={{ position: 'relative' }}>
-            <Avatar initials="SC" size={44} />
+            <Avatar initials="SC" size={48} />
+            <div style={{
+              position: 'absolute', inset: -5,
+              borderRadius: '50%',
+              border: '2px solid var(--danger)',
+              opacity: 0.4,
+              animation: 'pulse-ring 1.8s ease-out infinite',
+            }} />
             <div style={{
               position: 'absolute', bottom: -2, right: -2,
               width: 14, height: 14, borderRadius: '50%',
               background: 'var(--danger)',
               border: '2px solid var(--surface)',
-              animation: 'pulse 1.6s ease-in-out infinite',
             }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: -0.2 }}>Sarah Chen</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>· CTO, Northwind Robotics</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span className="serif" style={{ fontSize: 20, fontWeight: 400, letterSpacing: -0.4 }}>Sarah Chen</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>· CTO, Northwind Robotics · Munich</span>
               <Pill color="danger" size="sm">
                 <Dot color="danger" pulse size={5} />
                 Live · 4:12
               </Pill>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Qualifier agent is handling the call. Objection resolved at 01:58. Confidence <span style={{ color: 'var(--success)', fontWeight: 500 }}>78%</span> for booking a meeting.
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Qualifier agent is handling the call. Objection resolved at 01:58. Close confidence <span style={{ color: 'var(--success)', fontWeight: 600 }}>78%</span> and climbing.
             </div>
           </div>
+          <HeroWave />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="primary" size="md" onClick={openCall} icon={<IconPhone size={12} />}>
+          <Button variant="primary" size="lg" onClick={openCall} icon={<IconPhone size={13} />}>
             Listen in
           </Button>
         </div>
       </div>
     </Card>
+  );
+}
+
+function HeroWave() {
+  const bars = 14;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3, height: 30, marginRight: 12 }}>
+      {Array.from({ length: bars }).map((_, i) => (
+        <span key={i} style={{
+          display: 'inline-block',
+          width: 3,
+          height: 30,
+          background: `linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%)`,
+          borderRadius: 2,
+          transformOrigin: 'center',
+          animation: `waveBars 0.9s ease-in-out ${i * 0.07}s infinite`,
+          opacity: 0.85,
+        }} />
+      ))}
+    </div>
   );
 }
 
@@ -157,7 +194,7 @@ function KpiRow({ signalCount, expanded, setExpanded }) {
             </div>
           </div>
           <div className="serif" style={{ fontSize: 32, fontWeight: 400, letterSpacing: -1, marginBottom: 4 }}>
-            {typeof k.value === 'number' ? k.value.toLocaleString() : k.value}
+            {typeof k.value === 'number' ? <CountUp to={k.value} /> : k.value}
           </div>
           <div style={{ fontSize: 11, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontFamily: 'var(--mono)' }}>↗</span> {k.delta}
@@ -167,6 +204,25 @@ function KpiRow({ signalCount, expanded, setExpanded }) {
       ))}
     </div>
   );
+}
+
+function CountUp({ to }) {
+  const [v, setV] = useState(to);
+  useEffect(() => {
+    let raf;
+    const step = () => {
+      setV(curr => {
+        if (curr === to) return curr;
+        const diff = to - curr;
+        const jump = Math.sign(diff) * Math.max(1, Math.round(Math.abs(diff) * 0.14));
+        return Math.abs(diff) < Math.abs(jump) ? to : curr + jump;
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [to]);
+  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{v.toLocaleString()}</span>;
 }
 
 function MiniSparkline({ kpiKey }) {

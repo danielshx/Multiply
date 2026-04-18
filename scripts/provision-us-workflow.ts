@@ -90,6 +90,14 @@ async function hr<T>(path: string, init: RequestInit = {}): Promise<T> {
 // ---------- workflow lookup / creation ----------
 
 async function findOrCreateWorkflow(): Promise<Workflow> {
+  // Allow explicit override for targeting a specific pre-existing workflow
+  const forced = process.env.HR_TARGET_WORKFLOW_ID;
+  if (forced) {
+    const w = await hr<Workflow>(`/workflows/${forced}`);
+    console.log(`  ↻ using forced workflow: ${w.name} (id=${w.id.slice(0, 8)})`);
+    return w;
+  }
+
   // List workflows; HR's list endpoint returns a paged result
   const list = await hr<{ data: Array<Workflow> } | Array<Workflow>>(
     `/workflows?limit=100`,
@@ -616,8 +624,8 @@ async function configureVoiceAgent(
   } catch (e) {
     const msg = (e as Error).message;
     console.log(`  · dynamic from_number rejected (${msg.slice(0, 120)})`);
-    // Fallback: US static (user's primary market is now US). DE calls get
-    // a US caller-ID as a tradeoff — higher US conversion, lower DE.
+    // Fallback: static from_number (override via HR_FROM_NUMBER env).
+    const forced = process.env.HR_FROM_NUMBER ?? "+18142643480";
     try {
       await hr(`/versions/${versionId}/nodes/${agent.id}`, {
         method: "PUT",
@@ -629,12 +637,12 @@ async function configureVoiceAgent(
             ...existingConfig,
             from_number: {
               type: "static",
-              static: { id: "+18142643480", name: "+18142643480" },
+              static: { id: forced, name: forced },
             },
           },
         }),
       });
-      return { id: agent.id, dynamic: false, fallback: "US static" };
+      return { id: agent.id, dynamic: false, fallback: `static ${forced}` };
     } catch (e2) {
       console.log(`  · static fallback also failed: ${(e2 as Error).message.slice(0, 200)}`);
       return null;

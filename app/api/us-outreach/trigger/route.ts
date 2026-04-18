@@ -82,18 +82,24 @@ function countryCodeFor(phone: string): string {
   return map[cc] ?? `+${cc}`;
 }
 
+// Countries that should dial from the German caller-ID (per user request:
+// Albania + all DACH). Everything else uses the US workflow.
+const DE_CALLER_COUNTRIES = new Set(["DE", "AT", "CH", "AL"]);
+
+function pickWorkflowId(countryCode: string): { id: string; caller: string } {
+  const usId = process.env.HR_US_WORKFLOW_ID ?? process.env.HR_WORKFLOW_ID ?? "";
+  const deId = process.env.HR_DE_WORKFLOW_ID ?? "019da281-c1d5-7d48-be92-e2ead61317f5";
+  if (DE_CALLER_COUNTRIES.has(countryCode)) {
+    return { id: deId, caller: "DE +498962824034" };
+  }
+  return { id: usId, caller: "US +18142643480" };
+}
+
 export async function POST(req: Request) {
   const key = process.env.HR_API_KEY;
-  const wfId = process.env.HR_US_WORKFLOW_ID ?? process.env.HR_WORKFLOW_ID;
   if (!key) {
     return NextResponse.json(
       { ok: false, error: "HR_API_KEY not set" },
-      { status: 500 },
-    );
-  }
-  if (!wfId) {
-    return NextResponse.json(
-      { ok: false, error: "HR_US_WORKFLOW_ID not set" },
       { status: 500 },
     );
   }
@@ -113,6 +119,13 @@ export async function POST(req: Request) {
   const langPreview = languageFor(phone, contactName);
   const countryCode = countryCodeFor(phone);
   const startedAt = new Date().toISOString();
+  const wf = pickWorkflowId(countryCode);
+  if (!wf.id) {
+    return NextResponse.json(
+      { ok: false, error: "No workflow configured for country" },
+      { status: 500 },
+    );
+  }
 
   const { data: row, error: insertErr } = await supabase
     .from("us_outreach_calls")
@@ -156,7 +169,7 @@ export async function POST(req: Request) {
   };
 
   try {
-    const res = await fetch(`${HR_BASE}/workflows/${wfId}/runs`, {
+    const res = await fetch(`${HR_BASE}/workflows/${wf.id}/runs`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -190,7 +203,12 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", callId);
-    log.info("trigger", "hr_triggered", { hr_run_id: runId }, callId);
+    log.info(
+      "trigger",
+      "hr_triggered",
+      { hr_run_id: runId, workflow: wf.id.slice(0, 8), caller: wf.caller, country: countryCode },
+      callId,
+    );
 
     // Fire-and-forget: kick the sync endpoint a few times so session_id + early
     // messages get pulled even if the dashboard tab isn't open. Each attempt

@@ -170,7 +170,7 @@ export function DialerPanel({ onTrigger }) {
               hint={
                 bulkValid
                   ? `Will dial ${bulkLines.length} in parallel. Default country: ${country.label}.`
-                  : 'One per line. Format: "Name, +491234567890" or just "+491234567890". Local digits → prefixed with selected country.'
+                  : 'One per line. Numbers alone work (agent says "Friend"). Or "Name, +491234567890". Local digits get prefixed with the selected country.'
               }
             >
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -182,7 +182,9 @@ export function DialerPanel({ onTrigger }) {
               <TextArea
                 value={bulkText}
                 onChange={setBulkText}
-                placeholder={'Mike, +15551234567\nSarah, +4915123456789\n+447700900123'}
+                placeholder={
+                  '+4915123456789\n+15551234567\nMike, +447700900123\n+4917681136011'
+                }
                 rows={7}
               />
             </Field>

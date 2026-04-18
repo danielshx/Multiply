@@ -32,6 +32,13 @@ function normalizePhone(raw: string): string {
  * Map the phone's country prefix to a language code + opener. German-speaking
  * regions (Germany, Austria, Switzerland) get German; everything else English.
  */
+// HR-provisioned caller-ID numbers (visible via GET
+// /events/{voice-agent-id}/config-schema).
+const FROM_NUMBER_DE = "PNb56badda3e5eefb6374a3ab139ebd34d"; // +498962824034 "TUM.AI Multiply"
+const FROM_NUMBER_US = "PNffadc515b9ba44a65a86c5f94b7ec94a"; // +18142643480 "TUM.AI Multiply US"
+const FROM_NUMBER_DE_DISPLAY = "+498962824034";
+const FROM_NUMBER_US_DISPLAY = "+18142643480";
+
 function languageFor(phone: string, name: string) {
   const n = name?.trim() || "";
   const firstName = n || "there";
@@ -40,14 +47,18 @@ function languageFor(phone: string, name: string) {
       language: "de",
       language_name: "Deutsch",
       greeting_word: "Hallo",
-      initial_line: `Hallo ${firstName}, hier ist Alex vom Writers Network — hast du kurz eine Sekunde?`,
+      initial_line: `Hallo ${firstName}, hier ist Alex von MindLens — hast du kurz eine Sekunde?`,
+      from_number_id: FROM_NUMBER_DE,
+      from_number_display: FROM_NUMBER_DE_DISPLAY,
     };
   }
   return {
     language: "en",
     language_name: "English",
     greeting_word: "Hey",
-    initial_line: `Hey ${firstName}, this is Alex from the Writers Network — got a quick second?`,
+    initial_line: `Hey ${firstName}, this is Alex from MindLens — got a quick second?`,
+    from_number_id: FROM_NUMBER_US,
+    from_number_display: FROM_NUMBER_US_DISPLAY,
   };
 }
 
@@ -139,6 +150,8 @@ export async function POST(req: Request) {
     language: lang.language,
     language_name: lang.language_name,
     initial_line: lang.initial_line,
+    from_number_id: lang.from_number_id,
+    from_number_display: lang.from_number_display,
   };
 
   try {

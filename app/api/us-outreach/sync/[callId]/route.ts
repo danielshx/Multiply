@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -109,10 +110,6 @@ export async function GET(
     );
   }
 
-  // HR's GET /runs/{id} doesn't return session_id, so rely on the value
-  // already persisted on the call row (set by the webhook handler when HR
-  // fires session.status_changed). Fall back to the run response in case
-  // the API shape changes in a future version.
   const sessionId =
     (call.hr_session_id as string | undefined) ??
     run.session_id ??
@@ -123,38 +120,55 @@ export async function GET(
   if (run.status === "running" && call.status !== "live") update.status = "live";
   if (run.transcript_url) update.transcript_url = run.transcript_url;
   if (run.recording_url) update.recording_url = run.recording_url;
-  const duration = run.duration_sec ?? run.session?.duration_sec;
-  if (typeof duration === "number") update.duration_sec = duration;
 
   if (run.status === "completed" || run.status === "failed") {
     update.status = run.status === "failed" ? "failed" : "completed";
     if (run.completed_at && !call.ended_at) update.ended_at = run.completed_at;
   }
 
-  // Compute durations from timestamps if HR didn't provide them
-  if (!update.total_duration_sec && call.started_at) {
-    const endMs = (update.ended_at as string | undefined)
-      ? new Date(update.ended_at as string).getTime()
-      : run.completed_at
-        ? new Date(run.completed_at).getTime()
-        : null;
-    if (endMs) {
-      const startMs = new Date(call.started_at as string).getTime();
-      const total = Math.max(0, Math.round((endMs - startMs) / 1000));
-      if (total > 0) update.total_duration_sec = total;
+  // --- Duration capture: 3 sources, prefer most-specific -----------------
+  // 1. HR's own run.duration_sec
+  // 2. Compute from run.timestamp → run.completed_at
+  // 3. Compute from call.started_at → call.ended_at (webhook data)
+  const hrDur = run.duration_sec ?? run.session?.duration_sec;
+  if (typeof hrDur === "number" && hrDur > 0) {
+    update.duration_sec = hrDur;
+    update.total_duration_sec = hrDur;
+  } else if (run.timestamp && run.completed_at) {
+    const t = Math.max(
+      0,
+      Math.round(
+        (new Date(run.completed_at).getTime() -
+          new Date(run.timestamp).getTime()) /
+          1000,
+      ),
+    );
+    if (t > 0) {
+      update.total_duration_sec = t;
+      if (!call.duration_sec) update.duration_sec = t;
     }
   }
-  if (!update.talk_duration_sec && call.connected_at) {
-    const endMs = (update.ended_at as string | undefined)
-      ? new Date(update.ended_at as string).getTime()
-      : run.completed_at
-        ? new Date(run.completed_at).getTime()
+
+  const endMs = (update.ended_at as string | undefined)
+    ? new Date(update.ended_at as string).getTime()
+    : run.completed_at
+      ? new Date(run.completed_at).getTime()
+      : call.ended_at
+        ? new Date(call.ended_at as string).getTime()
         : null;
-    if (endMs) {
-      const startMs = new Date(call.connected_at as string).getTime();
-      const talk = Math.max(0, Math.round((endMs - startMs) / 1000));
-      if (talk > 0) update.talk_duration_sec = talk;
-    }
+  if (endMs && call.connected_at && !call.talk_duration_sec) {
+    const talk = Math.max(
+      0,
+      Math.round((endMs - new Date(call.connected_at as string).getTime()) / 1000),
+    );
+    if (talk > 0) update.talk_duration_sec = talk;
+  }
+  if (endMs && call.started_at && !call.total_duration_sec) {
+    const total = Math.max(
+      0,
+      Math.round((endMs - new Date(call.started_at as string).getTime()) / 1000),
+    );
+    if (total > 0) update.total_duration_sec = total;
   }
 
   if (Object.keys(update).length > 1) {
@@ -233,11 +247,28 @@ export async function GET(
     }
   }
 
+  const final = run.status === "completed" || run.status === "failed";
+  if (final) {
+    log.info(
+      "sync",
+      "finalized",
+      {
+        run_status: run.status,
+        new_messages: messageCount,
+        total_duration_sec: update.total_duration_sec ?? call.total_duration_sec ?? null,
+        talk_duration_sec: update.talk_duration_sec ?? call.talk_duration_sec ?? null,
+      },
+      callId,
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     run_status: run.status,
     session_id: sessionId,
     synced_messages: messageCount,
-    final: run.status === "completed" || run.status === "failed",
+    total_duration_sec: update.total_duration_sec ?? call.total_duration_sec ?? null,
+    talk_duration_sec: update.talk_duration_sec ?? call.talk_duration_sec ?? null,
+    final,
   });
 }

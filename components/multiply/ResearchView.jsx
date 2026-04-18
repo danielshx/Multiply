@@ -13,6 +13,7 @@ export function ResearchView({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [focusKey, setFocusKey] = useState(null);
+  const [contactsRow, setContactsRow] = useState(null);
   const lastRunRef = useRef(null);
 
   useEffect(() => {
@@ -95,7 +96,9 @@ export function ResearchView({ showToast }) {
         if (g.total_found == null && r.total_found != null) g.total_found = r.total_found;
       }
     }
-    return Array.from(byKey.values()).sort((a, b) => (a.latest_at > b.latest_at ? -1 : 1));
+    return Array.from(byKey.values())
+      .map((g) => ({ ...g, status: deriveRunStatus(g) }))
+      .sort((a, b) => (a.latest_at > b.latest_at ? -1 : 1));
   }, [rows]);
 
   useEffect(() => {
@@ -108,33 +111,45 @@ export function ResearchView({ showToast }) {
     [groups, focusKey],
   );
 
-  const start = async () => {
-    const t = topic.trim();
-    const a = agent.trim();
-    if (!t || !a) {
+  const dispatchRun = async ({ topic: t, agent: a, source } = {}) => {
+    const topicVal = (t ?? topic).trim();
+    const agentVal = (a ?? agent).trim();
+    if (!topicVal || !agentVal) {
       showToast?.('Topic and agent name are both required.', 'warning');
-      return;
+      return false;
     }
     setSubmitting(true);
-    lastRunRef.current = { topic: t, agent: a, at: Date.now() };
+    lastRunRef.current = { topic: topicVal, agent: agentVal, at: Date.now() };
     try {
       const res = await fetch('/api/research/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: t, agent: a }),
+        body: JSON.stringify({ topic: topicVal, agent: agentVal }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
         showToast?.(`Research agent failed: ${data.error ?? res.statusText}`, 'danger');
-      } else {
-        showToast?.(`Agent "${a}" dispatched · topic: ${t}`, 'success');
+        return false;
       }
+      const verb = source === 'rerun' ? 'Re-dispatched' : 'Dispatched';
+      showToast?.(`${verb} "${agentVal}" · topic: ${topicVal}`, 'success');
+      return true;
     } catch (err) {
       showToast?.(`Network error: ${err?.message ?? 'unknown'}`, 'danger');
+      return false;
     } finally {
       setSubmitting(false);
     }
   };
+
+  const start = () => dispatchRun();
+
+  const rerun = (group) =>
+    dispatchRun({
+      topic: group.topic || '',
+      agent: group.agent_name || '',
+      source: 'rerun',
+    });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1480, margin: '0 auto' }}>
@@ -149,10 +164,23 @@ export function ResearchView({ showToast }) {
           submitting={submitting}
           onStart={start}
         />
-        <RunsList groups={groups} focusKey={focusKey} onPick={setFocusKey} loading={loading} />
+        <RunsList
+          groups={groups}
+          focusKey={focusKey}
+          onPick={setFocusKey}
+          loading={loading}
+          onRerun={rerun}
+          submitting={submitting}
+        />
       </div>
 
-      <ResultsTable group={focusGroup} loading={loading} />
+      <ResultsTable
+        group={focusGroup}
+        loading={loading}
+        onOpenContacts={setContactsRow}
+      />
+
+      <ContactsModal row={contactsRow} onClose={() => setContactsRow(null)} />
     </div>
   );
 }
@@ -238,7 +266,7 @@ function TriggerPanel({ topic, agent, setTopic, setAgent, submitting, onStart })
   );
 }
 
-function RunsList({ groups, focusKey, onPick, loading }) {
+function RunsList({ groups, focusKey, onPick, loading, onRerun, submitting }) {
   return (
     <div style={{ ...panelStyle, padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -251,33 +279,43 @@ function RunsList({ groups, focusKey, onPick, loading }) {
         )}
         {groups.map((g) => {
           const active = g.key === focusKey;
+          const canRerun = (g.status === 'done' || g.status === 'stalled') && !!g.agent_name && !!g.topic;
           return (
-            <button
+            <div
               key={g.key}
-              onClick={() => onPick(g.key)}
               style={{
-                width: '100%',
-                textAlign: 'left',
                 display: 'grid',
                 gridTemplateColumns: '1fr auto',
-                gap: 12,
+                gap: 8,
                 padding: '10px 16px',
                 background: active ? 'var(--accent-soft)' : 'transparent',
-                border: 'none',
                 borderBottom: '1px solid var(--border-subtle)',
-                cursor: 'pointer',
-                color: 'var(--text)',
+                alignItems: 'center',
               }}
             >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: active ? 'var(--accent-text)' : 'var(--text)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {g.agent_name || '—'}
+              <button
+                onClick={() => onPick(g.key)}
+                style={{
+                  minWidth: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: 'var(--text)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, minWidth: 0 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: active ? 'var(--accent-text)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {g.agent_name || '—'}
+                  </span>
+                  <RunStatusPill status={g.status} group={g} />
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {g.search_query || g.topic || '—'}
                 </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                 <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-secondary)' }}>
                   {g.items.length}
                   {g.total_found != null && g.total_found !== g.items.length
@@ -287,8 +325,29 @@ function RunsList({ groups, focusKey, onPick, loading }) {
                 <span style={{ fontSize: 10, color: 'var(--text-quaternary)', fontFamily: 'var(--mono)' }}>
                   {formatRelative(g.latest_at)}
                 </span>
+                {canRerun && (
+                  <button
+                    onClick={() => onRerun?.(g)}
+                    disabled={submitting}
+                    title={`Re-run agent "${g.agent_name}" with topic "${g.topic}"`}
+                    style={{
+                      marginTop: 2,
+                      padding: '3px 8px',
+                      fontSize: 10,
+                      fontFamily: 'var(--mono)',
+                      color: submitting ? 'var(--text-quaternary)' : 'var(--accent-text)',
+                      background: 'var(--accent-soft)',
+                      border: '1px solid var(--accent-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      transition: 'all 120ms ease',
+                    }}
+                  >
+                    ↻ rerun
+                  </button>
+                )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -296,7 +355,28 @@ function RunsList({ groups, focusKey, onPick, loading }) {
   );
 }
 
-function ResultsTable({ group, loading }) {
+function RunStatusPill({ status, group }) {
+  const map = {
+    scraping:  { label: 'scraping',   color: 'info',    pulse: true },
+    enriching: { label: 'enriching',  color: 'info',    pulse: true },
+    done:      { label: 'done',       color: 'success', pulse: false },
+    stalled:   { label: 'stalled',    color: 'warning', pulse: false },
+    empty:     { label: 'empty',      color: 'neutral', pulse: false },
+  };
+  const m = map[status] ?? map.empty;
+  const subtitle =
+    status === 'enriching' && group
+      ? ` ${group.items.filter((r) => r.enrichment_status === 'enriched' || r.enrichment_status === 'skipped' || r.enrichment_status === 'failed').length}/${group.items.length}`
+      : '';
+  return (
+    <Pill color={m.color} size="xs">
+      {m.pulse && <Dot color={m.color} pulse size={4} />}
+      {m.label}{subtitle}
+    </Pill>
+  );
+}
+
+function ResultsTable({ group, loading, onOpenContacts }) {
   return (
     <div style={{ ...panelStyle, padding: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -379,8 +459,8 @@ function ResultsTable({ group, loading }) {
                 <Td style={{ color: 'var(--text-secondary)', maxWidth: 380 }}>
                   <DescriptionCell row={r} />
                 </Td>
-                <Td style={{ maxWidth: 320 }}>
-                  <ContactsCell row={r} />
+                <Td>
+                  <ContactsCell row={r} onOpen={() => onOpenContacts?.(r)} />
                 </Td>
                 <Td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>
                   {r.rating != null ? (
@@ -429,51 +509,203 @@ function DescriptionCell({ row }) {
   return <span style={{ color: 'var(--text-quaternary)' }}>—</span>;
 }
 
-function ContactsCell({ row }) {
+const ENRICH_TIMEOUT_MS = 5 * 60 * 1000;
+
+function ContactsCell({ row, onOpen }) {
   const contacts = Array.isArray(row.contacts) ? row.contacts : [];
   const status = row.enrichment_status;
-  if (contacts.length === 0) {
-    if (status === 'enriching' || status === 'pending') {
-      return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>scraping…</span>;
-    }
-    if (status === 'skipped') {
-      return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>no website</span>;
-    }
-    if (status === 'failed') {
-      return (
-        <span style={{ color: 'var(--warning)', fontSize: 11 }} title={row.enrichment_error || ''}>
-          extract failed
-        </span>
-      );
-    }
-    return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>—</span>;
+
+  if (contacts.length > 0) {
+    return (
+      <button
+        onClick={onOpen}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 10px',
+          fontSize: 11,
+          fontFamily: 'var(--mono)',
+          color: 'var(--accent-text)',
+          background: 'var(--accent-soft)',
+          border: '1px solid var(--accent-border)',
+          borderRadius: 999,
+          cursor: 'pointer',
+          transition: 'all 120ms ease',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+      >
+        <span>👥</span>
+        <span style={{ fontWeight: 600 }}>{contacts.length}</span>
+        <span>{contacts.length === 1 ? 'contact' : 'contacts'}</span>
+      </button>
+    );
   }
+
+  const created = row.created_at ? new Date(row.created_at).getTime() : 0;
+  const ageMs = created ? Date.now() - created : 0;
+  const stuck = ageMs > ENRICH_TIMEOUT_MS;
+
+  if ((status === 'enriching' || status === 'pending') && !stuck) {
+    return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>scraping…</span>;
+  }
+  return <span style={{ color: 'var(--text-quaternary)', fontSize: 11 }}>—</span>;
+}
+
+function ContactsModal({ row, onClose }) {
+  useEffect(() => {
+    if (!row) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [row, onClose]);
+
+  if (!row) return null;
+  const contacts = Array.isArray(row.contacts) ? row.contacts : [];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {contacts.slice(0, 4).map((c, j) => (
-        <div key={j} style={{ lineHeight: 1.3 }}>
-          <div style={{ fontSize: 12, color: 'var(--text)' }}>
-            <span style={{ fontWeight: 500 }}>{c.name}</span>
-            {c.role && (
-              <span style={{ color: 'var(--text-tertiary)' }}> · {c.role}</span>
-            )}
-          </div>
-          <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-secondary)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {c.phone && (
-              <a href={`tel:${c.phone}`} style={{ color: 'var(--accent-text)' }}>{c.phone}</a>
-            )}
-            {c.email && (
-              <a href={`mailto:${c.email}`} style={{ color: 'var(--accent-text)' }}>{c.email}</a>
-            )}
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose?.()}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(10,10,10,0.45)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        zIndex: 1500,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        animation: 'backdrop-in 150ms ease',
+      }}
+    >
+      <div
+        style={{
+          width: 'min(560px, 100%)',
+          maxHeight: '80vh',
+          background: 'var(--surface)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-xl)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {row.place_name || '—'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--mono)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {row.website || '—'}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '4px 10px',
+                fontSize: 11,
+                color: 'var(--text-tertiary)',
+                cursor: 'pointer',
+                fontFamily: 'var(--mono)',
+              }}
+            >
+              esc
+            </button>
           </div>
         </div>
-      ))}
-      {contacts.length > 4 && (
-        <div style={{ fontSize: 11, color: 'var(--text-quaternary)' }}>
-          +{contacts.length - 4} more
+        <div style={{ padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {contacts.length === 0 ? (
+            <Placeholder>No contacts extracted.</Placeholder>
+          ) : (
+            contacts.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: 14,
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-subtle)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
+                    {c.role && (
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{c.role}</div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--text-quaternary)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    contact {i + 1}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {c.phone && (
+                    <ContactAction icon="📞" label="Call" value={c.phone} href={`tel:${c.phone}`} />
+                  )}
+                  {c.email && (
+                    <ContactAction icon="✉" label="Email" value={c.email} href={`mailto:${c.email}`} />
+                  )}
+                  {!c.phone && !c.email && (
+                    <span style={{ fontSize: 11, color: 'var(--text-quaternary)', fontFamily: 'var(--mono)' }}>
+                      no phone or email extracted
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
-      )}
+      </div>
     </div>
+  );
+}
+
+function ContactAction({ icon, label, value, href }) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 10px',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)',
+        textDecoration: 'none',
+        color: 'var(--text)',
+        transition: 'all 120ms ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--accent-border)';
+        e.currentTarget.style.background = 'var(--accent-soft)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border)';
+        e.currentTarget.style.background = 'var(--surface)';
+      }}
+    >
+      <span style={{ fontSize: 14 }}>{icon}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'var(--mono)' }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {value}
+        </span>
+      </div>
+    </a>
   );
 }
 
@@ -551,6 +783,27 @@ function Field({ label, hint, children }) {
       {hint && <span style={{ fontSize: 11, color: 'var(--text-quaternary)' }}>{hint}</span>}
     </label>
   );
+}
+
+function deriveRunStatus(group) {
+  const items = group.items ?? [];
+  if (items.length === 0) return 'empty';
+  const latest = group.latest_at ? new Date(group.latest_at).getTime() : 0;
+  const ageMs = latest ? Date.now() - latest : 0;
+
+  const expected = group.total_found;
+  const scraping = expected != null && items.length < expected;
+  if (scraping) {
+    return ageMs > 10 * 60 * 1000 ? 'stalled' : 'scraping';
+  }
+
+  const pending = items.filter(
+    (r) => r.enrichment_status === 'pending' || r.enrichment_status === 'enriching',
+  );
+  if (pending.length > 0) {
+    return ageMs > 10 * 60 * 1000 ? 'stalled' : 'enriching';
+  }
+  return 'done';
 }
 
 function formatRelative(iso) {

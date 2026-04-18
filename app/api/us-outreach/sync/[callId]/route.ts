@@ -140,8 +140,24 @@ export async function GET(
         `/sessions/${sessionId}/messages?page=1&page_size=100&sort=asc`,
       );
       if (msgs && msgs.length > 0) {
-        const rows = msgs
+        const candidates = msgs
           .filter((m) => !m.is_filler && (m.content ?? "").trim().length > 0)
+          .filter((m) => {
+            // skip obvious system noise like <Thoughts>... events
+            const c = m.content ?? "";
+            if (c.startsWith("<Thoughts>")) return false;
+            return true;
+          });
+
+        // Fetch already-persisted hr_msg_ids for this call → skip them.
+        const { data: existing } = await supabase
+          .from("us_outreach_messages")
+          .select("hr_msg_id")
+          .eq("call_id", callId);
+        const existingIds = new Set((existing ?? []).map((r) => r.hr_msg_id));
+
+        const newRows = candidates
+          .filter((m) => !existingIds.has(m.id))
           .map((m) => ({
             call_id: callId,
             ts: m.timestamp ?? new Date().toISOString(),
@@ -149,12 +165,22 @@ export async function GET(
             content: m.content ?? "",
             hr_msg_id: m.id,
           }));
-        if (rows.length > 0) {
-          await supabase
+
+        if (newRows.length > 0) {
+          const { error: insErr } = await supabase
             .from("us_outreach_messages")
-            .upsert(rows, { onConflict: "hr_msg_id", ignoreDuplicates: true });
-          messageCount = rows.length;
+            .insert(newRows);
+          if (insErr) {
+            return NextResponse.json({
+              ok: false,
+              session_id: sessionId,
+              synced_messages: 0,
+              insert_error: insErr.message,
+              attempted: newRows.length,
+            });
+          }
         }
+        messageCount = newRows.length;
       }
     } catch (err) {
       // Session may not be ready yet — that's fine, next poll will retry.

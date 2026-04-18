@@ -512,7 +512,7 @@ async function readUsOutreachSource(
     return {
       lead_id: row.id,
       source: "us_outreach",
-      name: row.contact_name ?? `Contact ${phone}`,
+      name: prettyContactName(row.contact_name, phone, row.country_code),
       company: "(US Outreach)",
       phone_number: phone,
       email: "",
@@ -554,7 +554,7 @@ async function syncUsOutreachToLeads(
     const dispatchable = isUsOutreachDispatchable(row, latestLog);
     return {
       id: row.id,
-      name: row.contact_name ?? `Contact ${row.phone_number}`,
+      name: prettyContactName(row.contact_name, row.phone_number, row.country_code),
       phone: row.phone_number,
       email: null,
       interest:
@@ -584,6 +584,61 @@ async function syncUsOutreachToLeads(
   if (error) {
     console.warn(`[tick] us_outreach→leads upsert failed: ${error.message}`);
   }
+}
+
+/**
+ * The us_outreach pipeline writes "Friend" / "Undisclosed" as a placeholder
+ * when the carrier didn't expose a real caller name (~95% of rows). Display
+ * those generically. If we DO have a real first name, keep it.
+ */
+function prettyContactName(
+  raw: string | null,
+  phone: string | null,
+  countryCode: string | null,
+): string {
+  const name = (raw ?? "").trim();
+  const phoneClean = (phone ?? "").trim();
+  const isPlaceholder =
+    !name ||
+    name.toLowerCase() === "friend" ||
+    name.toLowerCase() === "undisclosed" ||
+    name.toLowerCase() === "diagtest" ||
+    name.toLowerCase() === "unknown";
+
+  if (!isPlaceholder) return name;
+
+  // Build "US Lead +1 (404) ····0557" style label.
+  const region = areaCodeRegion(phoneClean) ?? countryCode ?? "?";
+  const last4 = phoneClean.replace(/[^\d]/g, "").slice(-4);
+  return `US Lead · ${region}${last4 ? ` · ····${last4}` : ""}`;
+}
+
+const AREA_CODE_REGIONS: Record<string, string> = {
+  "212": "NYC", "718": "NYC", "646": "NYC", "917": "NYC", "347": "NYC",
+  "404": "Atlanta", "470": "Atlanta", "678": "Atlanta", "770": "Atlanta",
+  "415": "SF", "510": "Oakland", "650": "Bay Area", "408": "San Jose", "925": "East Bay",
+  "213": "LA", "310": "LA", "323": "LA", "424": "LA", "818": "LA",
+  "312": "Chicago", "773": "Chicago", "872": "Chicago",
+  "617": "Boston", "857": "Boston",
+  "713": "Houston", "281": "Houston", "832": "Houston",
+  "214": "Dallas", "469": "Dallas", "972": "Dallas",
+  "305": "Miami", "786": "Miami",
+  "202": "DC", "703": "Northern VA", "240": "MD",
+  "206": "Seattle", "425": "Seattle",
+  "503": "Portland", "971": "Portland",
+  "702": "Las Vegas", "725": "Las Vegas",
+  "303": "Denver", "720": "Denver",
+  "602": "Phoenix", "480": "Phoenix", "623": "Phoenix",
+  "215": "Philly", "267": "Philly", "445": "Philly",
+};
+
+function areaCodeRegion(phone: string): string | null {
+  // Normalize to digits only, drop leading "1" for US numbers.
+  const digits = phone.replace(/[^\d]/g, "");
+  if (digits.length < 4) return null;
+  const trimmed = digits.startsWith("1") && digits.length === 11 ? digits.slice(1) : digits;
+  const ac = trimmed.slice(0, 3);
+  return AREA_CODE_REGIONS[ac] ?? null;
 }
 
 function usOutreachHeat(row: UsOutreachCall): "cold" | "warm" | "hot" {

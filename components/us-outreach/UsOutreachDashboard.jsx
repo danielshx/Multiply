@@ -21,6 +21,7 @@ export default function UsOutreachDashboard() {
   const [messageCounts, setMessageCounts] = useState({});
   const [lastMessageByCall, setLastMessageByCall] = useState({});
   const [autoOpenedIds, setAutoOpenedIds] = useState(new Set());
+  const [dbTotals, setDbTotals] = useState({ calls: 0, messages: 0 });
 
   useEffect(() => {
     const sb = getBrowserSupabase();
@@ -32,12 +33,28 @@ export default function UsOutreachDashboard() {
     sb.from('us_outreach_calls')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(200)
+      .limit(1000)
       .then(({ data }) => {
         if (cancelled) return;
         setCalls(data ?? []);
         setLoading(false);
       });
+
+    // Poll true totals from the DB so the KPI strip can't drift even if
+    // Realtime hiccups. Every 4s.
+    const fetchTotals = async () => {
+      const [callsRes, msgsRes] = await Promise.all([
+        sb.from('us_outreach_calls').select('*', { count: 'exact', head: true }),
+        sb.from('us_outreach_messages').select('*', { count: 'exact', head: true }),
+      ]);
+      if (cancelled) return;
+      setDbTotals({
+        calls: callsRes.count ?? 0,
+        messages: msgsRes.count ?? 0,
+      });
+    };
+    fetchTotals();
+    const totalsPoll = setInterval(fetchTotals, 4000);
 
     sb.from('us_outreach_messages')
       .select('call_id, role, content, ts')
@@ -107,6 +124,7 @@ export default function UsOutreachDashboard() {
       cancelled = true;
       sb.removeChannel(ch);
       sb.removeChannel(msgCh);
+      clearInterval(totalsPoll);
       setConnected(false);
     };
   }, []);
@@ -142,14 +160,18 @@ export default function UsOutreachDashboard() {
   // Drawer only opens on explicit click. Auto-open removed.
 
   const stats = useMemo(() => {
-    const placed = calls.length;
-    const connectedCalls = calls.filter((c) =>
-      ['live', 'completed'].includes(c.status),
-    ).length;
+    const placed = dbTotals.calls || calls.length;
+    const connectedCalls = calls.filter((c) => {
+      const msgs = messageCounts[c.id] ?? 0;
+      if (c.disposition) return true;
+      if (msgs > 2) return true;
+      if (c.connected_at) return true;
+      return false;
+    }).length;
     const closed = calls.filter((c) => c.disposition === 'closed').length;
     const earnings = closed * commission;
     return { placed, connected: connectedCalls, closed, earnings };
-  }, [calls, commission]);
+  }, [calls, commission, dbTotals, messageCounts]);
 
   const openCall = openCallId ? calls.find((c) => c.id === openCallId) : null;
 
@@ -207,6 +229,7 @@ export default function UsOutreachDashboard() {
           calls={calls}
           messageCounts={messageCounts}
           commission={commission}
+          dbTotals={dbTotals}
         />
 
         <CallTable

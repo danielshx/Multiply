@@ -7,6 +7,25 @@
 **🏆 Built for:** HappyRobot × TUM.ai Makeathon 2026 — Challenge: *Build an Autonomous AI Sales Product*
 
 <p align="center">
+  <a href="https://raw.githubusercontent.com/danielshx/Multiply/main/public/readme/multiply-promo.mp4">
+    <img src="public/readme/agent-orchestra.png" alt="▶ Watch the 30-second Multiply promo" width="820" />
+  </a>
+  <br/>
+  <sub>
+    🎬 <b><a href="https://raw.githubusercontent.com/danielshx/Multiply/main/public/readme/multiply-promo.mp4">Watch the 30-second cinematic promo</a></b>
+    · <a href="public/readme/multiply-promo.mp4">local file</a>
+    · <a href="https://multiply-danielshxs-projects.vercel.app/">open live demo</a>
+  </sub>
+</p>
+
+<details>
+<summary>▶ Or play inline here (click to expand)</summary>
+
+<video src="https://raw.githubusercontent.com/danielshx/Multiply/main/public/readme/multiply-promo.mp4" controls muted loop playsinline width="100%"></video>
+
+</details>
+
+<p align="center">
   <img src="public/readme/agent-orchestra.png" alt="Multiply Agent Orchestra — 7 specialist roles orchestrated around a central Orchestrator" width="680" />
 </p>
 

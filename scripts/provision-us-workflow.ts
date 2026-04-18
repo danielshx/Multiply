@@ -421,7 +421,46 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-async function syncTool(versionId: string, parentNodeId: string, def: ToolDef) {
+// Build a Slate paragraph with embedded variable nodes. For each bodyFields
+// entry whose value starts with @, look up which node owns that variable
+// (@trigger.X → triggerNodeId+X, @X → toolNodeId+X) and emit a proper
+// Slate variable node. HR resolves these at runtime. Plain-text "@foo" is
+// NOT resolved — that's the bug we just hit.
+function buildValueSlate(
+  raw: string,
+  triggerNodeId: string,
+  toolNodeId: string,
+) {
+  if (!raw.startsWith("@")) {
+    return [{ type: "paragraph", children: [{ text: raw }] }];
+  }
+  const ref = raw.slice(1); // "trigger.call_id" | "decision"
+  const [scopeOrField, rest] = ref.includes(".")
+    ? [ref.split(".")[0], ref.split(".").slice(1).join(".")]
+    : [null, ref];
+  const groupId = scopeOrField === "trigger" ? triggerNodeId : toolNodeId;
+  const variableId = scopeOrField === "trigger" ? rest : scopeOrField ?? ref;
+  return [
+    {
+      type: "paragraph",
+      children: [
+        {
+          type: "variable",
+          group_id: groupId,
+          variable_id: variableId,
+          children: [{ text: "" }],
+        },
+      ],
+    },
+  ];
+}
+
+async function syncTool(
+  versionId: string,
+  parentNodeId: string,
+  triggerNodeId: string,
+  def: ToolDef,
+) {
   const allNodes = await listNodes(versionId);
   const existing = allNodes.find(
     (n) => n.type === "tool" && n.name === def.name,
@@ -479,7 +518,16 @@ async function syncTool(versionId: string, parentNodeId: string, def: ToolDef) {
     await hr(`/versions/${versionId}/nodes/${oldAction.id}`, { method: "DELETE" });
   }
 
-  const bodyParams = Object.entries(def.bodyFields).map(([k, v]) => plainKV(k, v));
+  // The event schema from GET /events/{id}/config-schema says:
+  //   data: key_value_pairs  (NOT "params")
+  //   bodyMode: "builder"|"raw"  (NOT "body_mode")
+  //   contentType: "application/json"
+  // Values must be Slate trees with proper `variable` nodes — plain-text
+  // "@trigger.X" is NOT interpolated.
+  const dataPairs = Object.entries(def.bodyFields).map(([k, v]) => ({
+    key: k,
+    value: buildValueSlate(v, triggerNodeId, toolId),
+  }));
 
   await hr(`/versions/${versionId}/nodes`, {
     method: "POST",
@@ -492,9 +540,10 @@ async function syncTool(versionId: string, parentNodeId: string, def: ToolDef) {
           event_id: EVENT_POST,
           configuration: {
             url: para(`${APP_URL}${def.path}`),
+            contentType: "application/json",
+            bodyMode: "builder",
             headers: [plainKV("Content-Type", "application/json")],
-            params: bodyParams,
-            body_mode: "json",
+            data: dataPairs,
           },
         },
       ],
@@ -592,12 +641,26 @@ async function main() {
     console.log(`  ✗ ${(err as Error).message.slice(0, 240)}`);
   }
 
-  // 8. Tools — record_disposition + send_quiz_link, attached to prompt node
-  if (promptNode) {
+  // 8. Tools — record_disposition + send_quiz_link, attached to prompt node.
+  //    Variables reference the trigger node (for @trigger.X) or the tool node
+  //    itself (for the tool's own parameters).
+  const triggerNode =
+    initialNodes.find((n) => !n.parent_id && (n.name ?? "").toLowerCase().includes("trigger")) ??
+    initialNodes.find((n) => !n.parent_id);
+  if (!promptNode) {
+    console.log("  ✗ prompt node missing — can't sync tools");
+  } else if (!triggerNode) {
+    console.log("  ✗ trigger node missing — can't resolve @trigger.X variables");
+  } else {
     console.log("\n▶ Syncing tools as children of the prompt node...");
     for (const def of TOOLS) {
       try {
-        const id = await syncTool(wf.latest_version.id, promptNode.id, def);
+        const id = await syncTool(
+          wf.latest_version.id,
+          promptNode.id,
+          triggerNode.id,
+          def,
+        );
         console.log(`  ✓ tool ${def.name} (id=${id.slice(0, 8)})`);
       } catch (err) {
         console.log(`  ✗ tool ${def.name} — ${(err as Error).message.slice(0, 240)}`);

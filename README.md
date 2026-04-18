@@ -27,30 +27,7 @@ LLMs can do the mechanical part. But a single agent behind a single phone line i
 
 ---
 
-## 2. What the jury will see (3-min demo path)
-
-> 📸 *Screenshot slot — **Swarm Grid with 25 live tiles** (drop `public/readme/swarm-grid.png` and it renders here).*
-> 📸 *Screenshot slot — **Live Call view** with transcript + mode badge (`public/readme/live-call.png`).*
-> 📸 *Screenshot slot — **Pipeline** Cold → Warm → Hot → Booked → Handoff (`public/readme/pipeline.png`).*
-
-
-
-| t | On stage | In the product |
-|---|---|---|
-| 0:00 | "This is our sales team. 25 agents. Launch." | Operator hits **Launch Swarm**. 25 tiles light up on the dashboard. |
-| 0:20 | Five teammates' phones ring simultaneously. | 5 tiles flip **Cold → Warm**. Live transcripts stream in. |
-| 0:45 | Teammate #1 says "I'm not interested." | Tile flips back to Cold, objection auto-logged into the shared **Learning Log**. Other 24 agents inherit it within the same run. |
-| 1:10 | Teammate #2 asks about pricing. | Tile goes **Hot**. Agent pulls live research, answers, proposes a time. |
-| 1:30 | Teammate #2 says "sure, Tuesday 3pm". | Tool call → Google Calendar → green **MEETING BOOKED** toast. Revenue counter ticks +€12 k. |
-| 2:00 | Teammate #3 asks a hard technical question. | Tile flips **Human-Handoff**. Operator clicks **Take Over**, picks up the call on their own phone, finishes it. |
-| 2:30 | "And here's what it learned in 3 minutes." | Knowledge Graph tab: nodes for every objection, trigger word, winning phrase — shared memory for the next 25-agent run. |
-| 3:00 | Close. | KPI strip: 25 dials · 5 connects · 1 meeting · 1 handoff · 12 new learnings. |
-
-Every number is real. Every call is real. No pre-recorded audio.
-
----
-
-## 3. How it maps to the challenge
+## 2. How it maps to the challenge
 
 | Challenge requirement | How Multiply delivers |
 |---|---|
@@ -78,7 +55,7 @@ Every number is real. Every call is real. No pre-recorded audio.
 
 ---
 
-## 4. Architecture, in one diagram
+## 3. Architecture, in one diagram
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -110,7 +87,7 @@ Every number is real. Every call is real. No pre-recorded audio.
 
 ---
 
-## 5. Stack
+## 4. Stack
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -128,7 +105,7 @@ Every number is real. Every call is real. No pre-recorded audio.
 
 ---
 
-## 6. Repo map
+## 5. Repo map
 
 ```
 app/
@@ -169,7 +146,7 @@ scripts/          seed-cognee, demo-data-seeder
 
 ---
 
-## 7. The five product surfaces
+## 6. The five product surfaces
 
 1. **Swarm Grid** (`/`) — 25 live tiles, each with mode badge, signal ticker, last line of transcript. Click any tile to zoom.
 2. **Live Monitor** (`/live`) — Every active conversation as a scrolling transcript lane, color-coded by mode. "Whisper" button injects a hint to the agent mid-call.
@@ -179,12 +156,12 @@ scripts/          seed-cognee, demo-data-seeder
 
 ---
 
-## 8. Three patterns we're proud of
+## 7. Three patterns we're proud of
 
-### 8.1 Mode-switch as a workflow node, not a prompt
+### 7.1 Mode-switch as a workflow node, not a prompt
 Cold → Warm → Hot → Human-Handoff is an HR **AI Classify** node with four outputs, wired to four **Module Change** nodes. The prompt doesn't know about modes; the *workflow* does. That's why mode flips are visible, auditable, and fast — no LLM round-trip to decide.
 
-### 8.2 The Learning Log is first-class state
+### 7.2 The Learning Log is first-class state
 Every objection, trigger phrase, winning line gets written by a custom tool `log-learning` into Supabase *and* Cognee. The next HR run **reads the learnings table into its system prompt** at node 1. So the 2nd agent of the day is already smarter than the 1st.
 
 <p align="center">
@@ -193,12 +170,12 @@ Every objection, trigger phrase, winning line gets written by a custom tool `log
   <em>Cognee live graph after one demo swarm run: 94 nodes, 157 edges — Persona, Outcome, Industry, Region, Rebuttal, Objection, Stage, Journey, Temporal. Click any node to see every call it fired in.</em>
 </p>
 
-### 8.3 One HR client, strict types, zero drift
+### 7.3 One HR client, strict types, zero drift
 Every HR call goes through `lib/happyrobot/client.ts`. If you grep the repo for `api.eu.happyrobot.ai` outside that file, you get zero hits. That discipline is what lets us swap workflow slugs mid-demo (DE vs. US outreach) without fear.
 
 ---
 
-## 9. Controls the operator has
+## 8. Controls the operator has
 
 - **Launch Swarm** — fan out 25 parallel HR runs, one per lead.
 - **Pause / Kill** — per tile, or whole swarm.
@@ -209,7 +186,7 @@ Every HR call goes through `lib/happyrobot/client.ts`. If you grep the repo for 
 
 ---
 
-## 10. Observability
+## 9. Observability
 
 - **Live transcript** per call, streaming via Supabase Realtime.
 - **Agent Trace** — every HR node, every tool call, latency, cost, response.
@@ -219,7 +196,7 @@ Every HR call goes through `lib/happyrobot/client.ts`. If you grep the repo for 
 
 ---
 
-## 11. Try it now (30 seconds)
+## 10. Try it now (30 seconds)
 
 **Live demo:** https://multiply-danielshxs-projects.vercel.app/
 
@@ -229,7 +206,7 @@ Open the link, hit **Launch Swarm**, watch 25 tiles light up. The deployed insta
 
 ---
 
-## 12. Run locally
+## 11. Run locally
 
 ```bash
 # 1. Clone brain repo next to this one (planning + HR docs live there)
@@ -263,7 +240,7 @@ Handy scripts:
 
 ---
 
-## 13. Where decisions live
+## 12. Where decisions live
 
 This repo is **product code only**. The design decisions — scoring, demo script, node-by-node HR blueprints, UI specs, the mirrored 302-page HR doc set — live in the brain repo at `../HappyRobot-TumAI/`. Always read it before designing something new.
 
@@ -278,7 +255,7 @@ This repo is **product code only**. The design decisions — scoring, demo scrip
 
 ---
 
-## 14. Team & credits
+## 13. Team & credits
 
 **Built at TUM.ai Makeathon, April 2026** — Munich.
 Product: Multiply · Challenge sponsor: **HappyRobot**.

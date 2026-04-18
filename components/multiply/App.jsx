@@ -18,6 +18,7 @@ import { CommandPalette } from './CommandPalette';
 import { AgentOrchestra } from './AgentOrchestra';
 import { ParticleField } from './ParticleField';
 import { PitchModeOverlay, setPitchMode, getPitchMode } from './PitchMode';
+import { ResearchAgentPanel } from './ResearchAgentPanel';
 
 const STAGE = { INTRO: 'intro', ONBOARDING: 'onboarding', DEPLOYING: 'deploying', APP: 'app' };
 
@@ -35,6 +36,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [signalCount, setSignalCount] = useState(2847);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [researchOpen, setResearchOpen] = useState(false);
 
   useEffect(() => {
     setHydrated(true);
@@ -125,6 +127,7 @@ export default function App() {
         signalCount={signalCount}
         currentTime={currentTime}
         companyData={companyData}
+        onOpenResearch={() => setResearchOpen(true)}
       />
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', position: 'relative', zIndex: 5 }}>
         <Sidebar view={view} setView={setView} agentsPaused={agentsPaused} resetDemo={resetDemo} selectedAgent={selectedAgent} setSelectedAgent={setSelectedAgent} />
@@ -204,13 +207,19 @@ export default function App() {
         }}
       />
 
+      <ResearchAgentPanel
+        open={researchOpen}
+        onClose={() => setResearchOpen(false)}
+        showToast={showToast}
+      />
+
       {toast && <Toast key={toast.id} text={toast.text} kind={toast.kind} />}
       <PitchModeOverlay />
     </div>
   );
 }
 
-function TopBar({ view, setView, agentsPaused, onTogglePause }) {
+function TopBar({ view, setView, agentsPaused, onTogglePause, onOpenResearch }) {
   return (
     <div style={{
       height: 48,
@@ -236,6 +245,28 @@ function TopBar({ view, setView, agentsPaused, onTogglePause }) {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      <button
+        onClick={onOpenResearch}
+        title="Open the Research Agent panel"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 12px',
+          background: 'var(--accent-soft)',
+          border: '1px solid var(--accent-border)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 12,
+          color: 'var(--accent-text)',
+          cursor: 'pointer',
+          fontWeight: 500,
+          transition: 'all 120ms ease',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
+        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+      >
+        <span style={{ fontSize: 13 }}>🔎</span>
+        <span>Research Agent</span>
+      </button>
 
       <button
         onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}

@@ -137,7 +137,7 @@ export async function GET(
   if (sessionId) {
     try {
       const { data: msgs } = await hrGet<{ data: Message[] }>(
-        `/sessions/${sessionId}/messages?page=1&page_size=200&sort=asc`,
+        `/sessions/${sessionId}/messages?page=1&page_size=100&sort=asc`,
       );
       if (msgs && msgs.length > 0) {
         const rows = msgs

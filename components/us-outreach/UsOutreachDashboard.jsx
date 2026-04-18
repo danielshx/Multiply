@@ -7,6 +7,7 @@ import { CallTable } from './CallTable';
 import { RevenueWidget } from './RevenueWidget';
 import { TranscriptDrawer } from './TranscriptDrawer';
 import { LiveCallsPanel } from './LiveCallsPanel';
+import { MetricsPanel } from './MetricsPanel';
 
 const DEFAULT_COMMISSION = Number(process.env.NEXT_PUBLIC_DEFAULT_COMMISSION_USD ?? 25);
 
@@ -213,6 +214,12 @@ export default function UsOutreachDashboard() {
         </div>
 
         <LiveCallsPanel calls={calls} onOpen={(id) => setOpenCallId(id)} />
+
+        <MetricsPanel
+          calls={calls}
+          messageCounts={messageCounts}
+          commission={commission}
+        />
 
         <CallTable
           calls={calls}

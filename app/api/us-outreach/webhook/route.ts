@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -148,15 +149,29 @@ async function handleHrEvent(
       const current =
         ((data.status as { current?: string } | undefined)?.current as string | undefined) ??
         undefined;
-      const update: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
-      };
+      const statusUpdatedAt =
+        ((data.status as { updated_at?: string } | undefined)?.updated_at as string | undefined) ??
+        undefined;
+      const nowIso = new Date().toISOString();
+      const update: Record<string, unknown> = { updated_at: nowIso };
       if (sessionId) update.hr_session_id = sessionId;
       if (runId) update.hr_run_id = runId;
-      if (current === "queued" || current === "in-progress") update.status = "live";
-      if (current === "completed") update.status = "completed";
-      if (current === "failed" || current === "error") update.status = "failed";
+
+      if (current === "queued") {
+        update.status = "live";
+        update.started_at = statusUpdatedAt ?? nowIso;
+      } else if (current === "in-progress") {
+        update.status = "live";
+        update.connected_at = statusUpdatedAt ?? nowIso;
+      } else if (current === "completed") {
+        update.status = "completed";
+        update.ended_at = statusUpdatedAt ?? nowIso;
+      } else if (current === "failed" || current === "error") {
+        update.status = "failed";
+        update.ended_at = statusUpdatedAt ?? nowIso;
+      }
       await supabase.from("us_outreach_calls").update(update).eq("id", callId);
+      log.info("webhook", `status_${current ?? "unknown"}`, { hr_run_id: runId, hr_session_id: sessionId }, callId);
 
       // AWAIT the sync (not fire-and-forget — Vercel kills the lambda on
       // response otherwise, so fire-and-forget fetches were silently dying).
@@ -168,8 +183,8 @@ async function handleHrEvent(
           "https://multiply-danielshxs-projects.vercel.app";
         try {
           await fetch(`${appUrl}/api/us-outreach/sync/${callId}`);
-        } catch {
-          /* best-effort */
+        } catch (e) {
+          log.warn("webhook", "sync_kick_failed", { err: (e as Error).message }, callId);
         }
       }
       break;

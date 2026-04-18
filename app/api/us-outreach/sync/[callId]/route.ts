@@ -30,6 +30,8 @@ type RunDetails = {
   duration_sec?: number;
   transcript_url?: string;
   recording_url?: string;
+  timestamp?: string;
+  completed_at?: string;
 };
 
 type Message = {
@@ -126,6 +128,33 @@ export async function GET(
 
   if (run.status === "completed" || run.status === "failed") {
     update.status = run.status === "failed" ? "failed" : "completed";
+    if (run.completed_at && !call.ended_at) update.ended_at = run.completed_at;
+  }
+
+  // Compute durations from timestamps if HR didn't provide them
+  if (!update.total_duration_sec && call.started_at) {
+    const endMs = (update.ended_at as string | undefined)
+      ? new Date(update.ended_at as string).getTime()
+      : run.completed_at
+        ? new Date(run.completed_at).getTime()
+        : null;
+    if (endMs) {
+      const startMs = new Date(call.started_at as string).getTime();
+      const total = Math.max(0, Math.round((endMs - startMs) / 1000));
+      if (total > 0) update.total_duration_sec = total;
+    }
+  }
+  if (!update.talk_duration_sec && call.connected_at) {
+    const endMs = (update.ended_at as string | undefined)
+      ? new Date(update.ended_at as string).getTime()
+      : run.completed_at
+        ? new Date(run.completed_at).getTime()
+        : null;
+    if (endMs) {
+      const startMs = new Date(call.connected_at as string).getTime();
+      const talk = Math.max(0, Math.round((endMs - startMs) / 1000));
+      if (talk > 0) update.talk_duration_sec = talk;
+    }
   }
 
   if (Object.keys(update).length > 1) {

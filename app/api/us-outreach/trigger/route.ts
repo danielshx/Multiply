@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { AFFILIATE, buildTrackedQuizUrl } from "@/lib/us-outreach/affiliate";
+import { log } from "@/lib/us-outreach/log";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,25 @@ function languageFor(phone: string, name: string) {
   };
 }
 
+function countryCodeFor(phone: string): string {
+  const m = phone.match(/^\+(\d{1,3})/);
+  if (!m) return "unknown";
+  const cc = m[1];
+  const map: Record<string, string> = {
+    "1": "US",
+    "49": "DE",
+    "43": "AT",
+    "41": "CH",
+    "44": "GB",
+    "33": "FR",
+    "39": "IT",
+    "34": "ES",
+    "31": "NL",
+    "32": "BE",
+  };
+  return map[cc] ?? `+${cc}`;
+}
+
 export async function POST(req: Request) {
   const key = process.env.HR_API_KEY;
   const wfId = process.env.HR_US_WORKFLOW_ID ?? process.env.HR_WORKFLOW_ID;
@@ -78,17 +98,25 @@ export async function POST(req: Request) {
 
   const supabase = getServerSupabase();
 
+  const langPreview = languageFor(phone, contactName);
+  const countryCode = countryCodeFor(phone);
+  const startedAt = new Date().toISOString();
+
   const { data: row, error: insertErr } = await supabase
     .from("us_outreach_calls")
     .insert({
       contact_name: contactName,
       phone_number: phone,
       status: "triggered",
+      language: langPreview.language,
+      country_code: countryCode,
+      started_at: startedAt,
     })
     .select()
     .single();
 
   if (insertErr || !row) {
+    log.error("trigger", "insert_failed", { phone, error: insertErr?.message });
     return NextResponse.json(
       { ok: false, error: insertErr?.message ?? "insert failed" },
       { status: 500 },
@@ -97,7 +125,8 @@ export async function POST(req: Request) {
 
   const callId = row.id as string;
   const trackedUrl = buildTrackedQuizUrl(callId);
-  const lang = languageFor(phone, contactName);
+  const lang = langPreview;
+  log.info("trigger", "call_row_created", { phone, country: countryCode, language: lang.language }, callId);
 
   const payload = {
     call_id: callId,
@@ -131,6 +160,7 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", callId);
+      log.error("trigger", "hr_trigger_failed", { status: res.status, body: text.slice(0, 500) }, callId);
       return NextResponse.json(
         { ok: false, status: res.status, error: text.slice(0, 300) },
         { status: 502 },
@@ -146,6 +176,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", callId);
+    log.info("trigger", "hr_triggered", { hr_run_id: runId }, callId);
 
     // Fire-and-forget: kick the sync endpoint a few times so session_id + early
     // messages get pulled even if the dashboard tab isn't open. Each attempt

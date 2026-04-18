@@ -23,14 +23,28 @@ type Body = {
   proposed_slots?: string[];
   duration_minutes?: number;
   lead_id?: string;
+  should_book?: boolean | string;
+  summary?: string;
 };
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Body;
-  const slot = body.proposed_slots?.[0];
-  if (!slot) {
-    return NextResponse.json({ ok: false, error: "no proposed_slots" }, { status: 400 });
+
+  // HR post-call flow sends should_book=false (or a templated empty string) when
+  // the AI Extract did not detect an agreed slot. Treat that as a successful
+  // no-op so the workflow branch stays green.
+  const shouldBook =
+    body.should_book === true ||
+    body.should_book === "true";
+  const rawSlot = body.proposed_slots?.[0]?.trim();
+  if (!shouldBook || !rawSlot) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: !shouldBook ? "should_book_false" : "no_slot",
+    });
   }
+  const slot = rawSlot;
 
   const hasGoogle =
     !!process.env.GOOGLE_OAUTH_REFRESH_TOKEN &&

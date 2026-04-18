@@ -39,11 +39,24 @@ function verifySignature(rawBody: string, header: string | null): boolean {
 export async function POST(req: Request) {
   const raw = await req.text();
   const sig = req.headers.get("x-hr-signature") ?? req.headers.get("x-happyrobot-signature");
+  const sharedSecret = req.headers.get("x-multiply-secret");
 
-  // Allow unsigned in dev only (when WEBHOOK_SECRET is empty).
+  // Two accepted auth modes when WEBHOOK_SECRET is set:
+  //   1) HR's own outgoing webhooks → HMAC in X-HR-Signature
+  //   2) Our v10 workflow Dashboard POST nodes → plain x-multiply-secret header
+  // Either passes. Empty WEBHOOK_SECRET means dev mode, all unsigned posts allowed.
   const secretSet = !!process.env.WEBHOOK_SECRET;
-  if (secretSet && !verifySignature(raw, sig)) {
-    return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+  if (secretSet) {
+    const sharedOk =
+      !!sharedSecret &&
+      sharedSecret.length === process.env.WEBHOOK_SECRET!.length &&
+      crypto.timingSafeEqual(
+        Buffer.from(sharedSecret),
+        Buffer.from(process.env.WEBHOOK_SECRET!),
+      );
+    if (!sharedOk && !verifySignature(raw, sig)) {
+      return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+    }
   }
 
   let payload: HRPayload;

@@ -49,3 +49,4 @@ happyrobot/tools/*.json
 
 # claude local overrides
 .claude/settings.local.json
+

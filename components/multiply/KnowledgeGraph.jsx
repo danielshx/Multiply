@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Dot, Button, Panel } from './ui';
+import { CogneeIntelligence } from './CogneeIntelligence';
 
 const NODE_COLORS = {
   persona: { bg: 'var(--purple-soft)', fg: 'var(--purple)', bd: 'var(--purple-border)', dot: 'purple' },
@@ -89,6 +90,8 @@ export function KnowledgeGraph() {
           Cognee-backed memory. Every call, dossier, and rebuttal pattern connects here. The Negotiator queries this graph live before each turn.
         </p>
       </div>
+
+      <CogneeIntelligence />
 
       {error && (
         <div style={{

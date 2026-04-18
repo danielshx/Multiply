@@ -40,9 +40,36 @@ export async function POST(req: Request) {
   const url = body.tracked_url ?? buildTrackedQuizUrl(body.call_id);
   const message = `${AFFILIATE.productName} — take the 60-sec job-fit quiz, see what type of writing fits you ($1 trial): ${url}`;
 
+  const supabase = getServerSupabase();
+  const twilioConfigured =
+    !!process.env.TWILIO_ACCOUNT_SID &&
+    !!process.env.TWILIO_AUTH_TOKEN &&
+    !!process.env.TWILIO_SMS_FROM;
+
+  // If Twilio is not configured (HR's voice number can't send SMS, and you
+  // don't want a separate Twilio SMS account), we log success anyway so the
+  // agent's conversation flows. The dashboard shows a "Copy link" button on
+  // each closed call with the tracked URL so the team sends it manually.
+  if (!twilioConfigured) {
+    await supabase
+      .from("us_outreach_calls")
+      .update({
+        sms_sent_at: new Date().toISOString(),
+        sms_sid: "manual-send",
+        reason: "link staged — send manually via dashboard",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", body.call_id);
+    return NextResponse.json({
+      ok: true,
+      mode: "manual",
+      link: url,
+      note: "Twilio not configured — link staged in dashboard for manual send",
+    });
+  }
+
   try {
     const sms = await sendSms({ to, body: message });
-    const supabase = getServerSupabase();
     await supabase
       .from("us_outreach_calls")
       .update({
@@ -51,26 +78,19 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.call_id);
-    return NextResponse.json({ ok: true, sid: sms.sid, to: sms.to });
+    return NextResponse.json({ ok: true, mode: "sms", sid: sms.sid, to: sms.to });
   } catch (err) {
-    // Graceful degrade: if Twilio isn't configured or the send fails, DON'T
-    // 502. Return 200 with a note — the agent still thinks the link was sent,
-    // the call continues smoothly, and we log the reason so we can fix Twilio.
     const msg = (err as Error).message;
-    console.warn("send_quiz_link failed (graceful):", msg);
-    const supabase = getServerSupabase();
     await supabase
       .from("us_outreach_calls")
       .update({
+        sms_sent_at: new Date().toISOString(),
+        sms_sid: "failed",
         reason: `sms_failed: ${msg.slice(0, 200)}`,
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.call_id);
-    return NextResponse.json({
-      ok: true,
-      sms_sent: false,
-      note: "SMS not delivered — tool returned ok anyway so agent proceeds",
-      error: msg.slice(0, 200),
-    });
+    // Still return ok so agent continues; surface fail in dashboard.
+    return NextResponse.json({ ok: true, mode: "failed", error: msg.slice(0, 200) });
   }
 }

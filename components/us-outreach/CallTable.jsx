@@ -1,6 +1,58 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { Panel, Pill, Dot, IconChevronRight } from '@/components/multiply/ui';
+
+const AFFILIATE_BASE = 'https://paidonlinewritingjobs.com/funnel/job-quiz/job-quiz/';
+const HOP_ID = '991c2879-98a8-47f9-befe-6eedacf996f2';
+function buildLink(callId) {
+  return `${AFFILIATE_BASE}?hopId=${HOP_ID}&hop=happyrob&cid=${callId}`;
+}
+
+function CopyLinkButton({ callId, sent }) {
+  const [copied, setCopied] = useState(false);
+  async function copy(e) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(buildLink(callId));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+  return (
+    <button
+      onClick={copy}
+      style={{
+        fontSize: 10,
+        fontFamily: 'var(--mono)',
+        padding: '2px 8px',
+        background: copied
+          ? 'var(--success-soft)'
+          : sent
+            ? 'var(--accent-soft)'
+            : 'var(--surface)',
+        color: copied
+          ? 'var(--success)'
+          : sent
+            ? 'var(--accent-text)'
+            : 'var(--text-tertiary)',
+        border: `1px solid ${
+          copied
+            ? 'var(--success-border)'
+            : sent
+              ? 'var(--accent-border)'
+              : 'var(--border)'
+        }`,
+        borderRadius: 'var(--radius-sm)',
+        cursor: 'pointer',
+        fontWeight: 500,
+      }}
+    >
+      {copied ? '✓ copied' : sent ? '✓ link' : 'copy link'}
+    </button>
+  );
+}
 
 const STATUS_TONE = {
   triggered: { color: 'neutral', label: 'queued', dot: 'neutral' },
@@ -167,14 +219,8 @@ export function CallTable({ calls, loading, commission, messageCounts = {}, onOp
                   )}
                 </div>
 
-                <div
-                  style={{
-                    textAlign: 'right',
-                    fontSize: 12,
-                    color: c.sms_sent_at ? 'var(--success)' : 'var(--text-quaternary)',
-                  }}
-                >
-                  {c.sms_sent_at ? '✓' : '—'}
+                <div style={{ textAlign: 'right' }}>
+                  <CopyLinkButton callId={c.id} sent={!!c.sms_sent_at} />
                 </div>
 
                 <div

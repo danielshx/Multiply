@@ -5,6 +5,7 @@ import { Onboarding } from './Onboarding';
 import { AgentDeployment } from './AgentDeployment';
 import { Dashboard } from './Dashboard';
 import { LiveCall } from './LiveCall';
+import { LiveMonitor } from './LiveMonitor';
 import { AgentTrace } from './AgentTrace';
 import { KnowledgeGraph } from './KnowledgeGraph';
 import { LiveActivityIndicator } from './LiveActivity';
@@ -143,6 +144,7 @@ export default function App() {
               companyData={companyData}
             />
           )}
+          {view === 'live' && <LiveMonitor />}
           {view === 'trace' && <AgentTrace />}
           {view === 'research' && <ResearchView showToast={showToast} />}
           {view === 'graph' && <KnowledgeGraph />}
@@ -171,6 +173,7 @@ export default function App() {
             case 'view-orchestra':return setView('orchestra');
             case 'view-trace':    return setView('trace');
             case 'view-research': return setView('research');
+            case 'view-live':     return setView('live');
             case 'view-dashboard':return setView('dashboard');
             case 'replay-tour':   return replayTour();
             case 'pitch-mode':
@@ -242,6 +245,7 @@ function TopBar({ view, setView, agentsPaused, onTogglePause, onOpenResearch }) 
 
       <div style={{ display: 'flex', gap: 1 }}>
         <TabButton active={view === 'dashboard'} onClick={() => setView('dashboard')}>Pipeline</TabButton>
+        <TabButton active={view === 'live'} onClick={() => setView('live')} live>Live</TabButton>
         <TabButton active={view === 'orchestra'} onClick={() => setView('orchestra')}>Orchestra</TabButton>
         <TabButton active={view === 'graph'} onClick={() => setView('graph')}>Knowledge</TabButton>
         <TabButton active={view === 'trace'} onClick={() => setView('trace')}>Trace</TabButton>
@@ -317,7 +321,7 @@ function TopBar({ view, setView, agentsPaused, onTogglePause, onOpenResearch }) 
   );
 }
 
-function TabButton({ children, active, onClick }) {
+function TabButton({ children, active, onClick, live }) {
   return (
     <button onClick={onClick} style={{
       padding: '6px 12px',
@@ -328,8 +332,24 @@ function TabButton({ children, active, onClick }) {
       fontWeight: active ? 500 : 450,
       transition: 'all 120ms ease',
       cursor: 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
     }}>
+      {live && <span style={{
+        width: 6, height: 6, borderRadius: '50%',
+        background: '#22c55e',
+        boxShadow: '0 0 0 0 rgba(34,197,94,0.6)',
+        animation: active || true ? 'pulseLive 1.6s ease-out infinite' : 'none',
+      }} />}
       {children}
+      <style jsx>{`
+        @keyframes pulseLive {
+          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+          70% { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+        }
+      `}</style>
     </button>
   );
 }

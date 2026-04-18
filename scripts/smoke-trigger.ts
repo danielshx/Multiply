@@ -12,9 +12,13 @@ async function main() {
     process.exit(1);
   }
 
+  const key = process.env.HR_API_KEY;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (key) headers.Authorization = `Bearer ${key}`;
+
   const res = await fetch(`${hooksUrl}/${slug}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       lead_id: "smoke-test",
       customer_name: "Smoke Test",

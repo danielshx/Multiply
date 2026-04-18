@@ -1,7 +1,6 @@
-# Loads Multiply/.env.local and fires the HappyRobot v11 workflow hook
-# for each lead in the $leads array (one HR run per lead, in parallel).
-# Uses curl.exe instead of Invoke-RestMethod because PowerShell strips the
-# Authorization header on 3xx redirects and ends up in a redirect loop.
+# Triggers the HappyRobot v11 Multiply Call Agent for each lead in $leads.
+# Uses the actual HR v2 trigger endpoint (NOT /hooks/{slug} which is the
+# editor UI URL and just redirects to login).
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $envFile = Join-Path $root ".env.local"
 if (Test-Path $envFile) {
@@ -16,16 +15,12 @@ if (Test-Path $envFile) {
   }
 }
 
-$hooksUrl = $env:HR_HOOKS_URL
-if (-not $hooksUrl) { $hooksUrl = "https://platform.eu.happyrobot.ai/hooks" }
+# v2 trigger endpoint
+$workflowId = "019da099-829f-70dd-8834-8a949e841f73"
+$url = "https://platform.eu.happyrobot.ai/api/v2/workflows/$workflowId/runs"
 
-# v11 workflow slug (Multiply Call Agent · Senior Closer)
-$slug = "hxdmn0lnm8zc"
-if ($env:HR_WORKFLOW_SLUG -and $env:HR_WORKFLOW_SLUG -notmatch '^[0-9a-f]{8}-') {
-  $slug = $env:HR_WORKFLOW_SLUG
-}
-
-$url = "$($hooksUrl.TrimEnd('/'))/$slug"
+$apiKey = $env:HR_API_KEY
+if (-not $apiKey) { throw "HR_API_KEY missing in .env.local" }
 
 # === Leads to call ===
 $leads = @(
@@ -59,32 +54,21 @@ $leads = @(
 
 Write-Host "Triggering $($leads.Count) HR run(s) at $url" -ForegroundColor Cyan
 
-$apiKey = $env:HR_API_KEY
+foreach ($lead in $leads) {
+  $payload = $lead | ConvertTo-Json -Compress
+  $tmp = New-TemporaryFile
+  $payload | Out-File -Encoding ascii -NoNewline -FilePath $tmp.FullName
 
-$jobs = foreach ($lead in $leads) {
-  $body = $lead | ConvertTo-Json -Compress
-  Write-Host "  -> $($lead.customer_name) ($($lead.phone_number))" -ForegroundColor Yellow
+  Write-Host "`n  -> $($lead.customer_name) ($($lead.phone_number))" -ForegroundColor Yellow
 
-  Start-Job -ArgumentList $url, $apiKey, $body, $lead.customer_name -ScriptBlock {
-    param($u, $k, $b, $name)
-    $args = @(
-      "-sS",
-      "--max-time", "30",
-      "-L",
-      "-X", "POST",
-      "-H", "Content-Type: application/json"
-    )
-    if ($k) { $args += @("-H", "Authorization: Bearer $k") }
-    $args += @("-d", $b, $u)
+  $resp = curl.exe -sS -w "`nHTTP_CODE:%{http_code}" -X POST `
+    -H "Content-Type: application/json" `
+    -H "Authorization: Bearer $apiKey" `
+    --data-binary "@$($tmp.FullName)" `
+    $url
 
-    try {
-      $resp = & curl.exe @args 2>&1
-      [pscustomobject]@{ lead = $name; ok = $LASTEXITCODE -eq 0; response = $resp }
-    } catch {
-      [pscustomobject]@{ lead = $name; ok = $false; error = $_.Exception.Message }
-    }
-  }
+  Remove-Item $tmp.FullName -Force
+  Write-Host $resp
 }
 
-$jobs | Wait-Job | Receive-Job | ConvertTo-Json -Depth 4
-$jobs | Remove-Job
+Write-Host "`nWatch live: https://platform.eu.happyrobot.ai/tumaimultiply/workflows/hxdmn0lnm8zc/runs" -ForegroundColor Green

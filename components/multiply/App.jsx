@@ -250,34 +250,13 @@ function TopBar({ view, setView, agentsPaused, onTogglePause, onOpenResearch }) 
         <TabButton active={view === 'dashboard'} onClick={() => setView('dashboard')}>Pipeline</TabButton>
         <TabButton active={view === 'live'} onClick={() => setView('live')} live>Live</TabButton>
         <TabButton active={view === 'database'} onClick={() => setView('database')}>Database</TabButton>
+        <TabButton active={view === 'research'} onClick={() => setView('research')}>Research</TabButton>
         <TabButton active={view === 'orchestra'} onClick={() => setView('orchestra')}>Orchestra</TabButton>
         <TabButton active={view === 'graph'} onClick={() => setView('graph')}>Knowledge</TabButton>
         <TabButton active={view === 'trace'} onClick={() => setView('trace')}>Trace</TabButton>
       </div>
 
       <div style={{ flex: 1 }} />
-
-      <button
-        onClick={onOpenResearch}
-        title="Open the Research Agent panel"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '5px 12px',
-          background: 'var(--accent-soft)',
-          border: '1px solid var(--accent-border)',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: 12,
-          color: 'var(--accent-text)',
-          cursor: 'pointer',
-          fontWeight: 500,
-          transition: 'all 120ms ease',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
-        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-      >
-        <span style={{ fontSize: 13 }}>🔎</span>
-        <span>Research Agent</span>
-      </button>
 
       <button
         onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}

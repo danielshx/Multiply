@@ -69,9 +69,6 @@ importers:
         specifier: ^5.0.0
         version: 5.0.12(@types/react@18.3.28)(react@18.3.1)
     devDependencies:
-      '@playwright/test':
-        specifier: ^1.48.0
-        version: 1.59.1
       '@types/node':
         specifier: ^22.7.5
         version: 22.19.17
@@ -2601,6 +2598,7 @@ snapshots:
   '@playwright/test@1.59.1':
     dependencies:
       playwright: 1.59.1
+    optional: true
 
   '@rtsao/scc@1.1.0': {}
 
@@ -4191,13 +4189,15 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  playwright-core@1.59.1: {}
+  playwright-core@1.59.1:
+    optional: true
 
   playwright@1.59.1:
     dependencies:
       playwright-core: 1.59.1
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   possible-typed-array-names@1.1.0: {}
 
